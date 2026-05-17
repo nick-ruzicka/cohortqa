@@ -1,0 +1,4 @@
+name: empty
+description: No modifications declared.
+based_on: all
+modifications: {}

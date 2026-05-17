@@ -1,0 +1,10 @@
+# Missing `actions`, `friction_signals`, and the three *_dir keys.
+app:
+  name: Broken
+  dev_server: http://localhost:3000
+  description: Missing required keys.
+
+routes:
+  - path: /home
+    purpose: Landing.
+    actions: [click_cta]

@@ -1,0 +1,17 @@
+identity:
+  name: Bad
+  role: Tester
+  background: Test.
+
+target_archetypes: []
+location_preferences: []
+comp_floor: 100000
+
+behavioral:
+  click_speed: medium
+  reads_details: true
+  rejection_threshold: medium
+  detail_dwell_ms: 1000
+
+meta_attitude: Bad.
+friction_sensitivities: [navigation, made_up_signal]

@@ -1,0 +1,21 @@
+app:
+  name: TestApp
+  dev_server: localhost-no-scheme
+  description: dev_server isn't a URL.
+
+routes:
+  - path: /home
+    purpose: Landing.
+    actions: [click_cta]
+
+actions:
+  - name: click_cta
+    selector: "[data-testid='primary-cta']"
+
+friction_signals:
+  - type: navigation
+    description: Lost.
+
+personas_dir: personas
+scenarios_dir: scenarios
+runs_dir: runs

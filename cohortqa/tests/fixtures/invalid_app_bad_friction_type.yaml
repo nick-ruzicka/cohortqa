@@ -1,0 +1,21 @@
+app:
+  name: TestApp
+  dev_server: http://localhost:3000
+  description: Friction signal declares unknown type.
+
+routes:
+  - path: /home
+    purpose: Landing.
+    actions: [click_cta]
+
+actions:
+  - name: click_cta
+    selector: "[data-testid='primary-cta']"
+
+friction_signals:
+  - type: wibble    # not in KNOWN_FRICTION_TYPES
+    description: Made-up type.
+
+personas_dir: personas
+scenarios_dir: scenarios
+runs_dir: runs

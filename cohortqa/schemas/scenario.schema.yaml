@@ -1,0 +1,23 @@
+# PersonaLab scenario schema
+#
+# A scenario is a prospective hypothetical: "what would happen if we
+# added X to the UI before persona Y runs through it?" PersonaLab applies
+# modifications, runs the persona, then diffs friction vs baseline.
+
+name: str
+description: str
+based_on: str                       # persona id (filename stem) or "all"
+
+modifications:
+  dom_injections?:
+    - route: str                    # e.g. "/pipeline"
+      selector: str                 # CSS selector to attach inside
+      html: str                     # HTML fragment to inject
+
+  api_mocks?:
+    - endpoint: str                 # e.g. "/api/roles"
+      response: object              # JSON body to return
+
+  config_overrides?:
+    - key: str                      # dotted path or filename
+      value: any                    # new value (revert after run)

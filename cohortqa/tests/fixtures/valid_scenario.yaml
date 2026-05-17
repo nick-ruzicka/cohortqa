@@ -1,0 +1,9 @@
+name: hide_with_reason
+description: Inject a Hide-with-reason dropdown on role cards.
+based_on: all
+
+modifications:
+  dom_injections:
+    - route: /pipeline
+      selector: "[data-testid='role-card']"
+      html: "<select data-testid='hide-reason'><option>too senior</option></select>"

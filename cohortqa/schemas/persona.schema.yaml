@@ -1,0 +1,27 @@
+# PersonaLab persona schema
+#
+# One persona.yaml = one simulated user. PersonaLab loads these, drives
+# the browser according to `behavioral`, and asks the analyzer to weight
+# friction by `friction_sensitivities`.
+
+identity:
+  name: str
+  role: str
+  background: str
+
+target_archetypes: list[str]        # e.g. ["gtm-engineering", "fde"]; [] = open to all
+
+location_preferences: list[str]     # free-form strings describing geo/remote stance
+
+comp_floor: int                     # USD annual
+
+behavioral:
+  click_speed: str                  # slow | medium | medium-fast | fast
+  reads_details: bool               # opens detail panels?
+  rejection_threshold: str          # low | medium | medium-high | high
+  detail_dwell_ms: int              # ms spent on detail panels when opened
+
+meta_attitude: str                  # one-sentence vibe
+
+friction_sensitivities: list[str]   # friction_signal types this persona is sensitive to
+                                    # (must match types defined in app-config friction_signals)

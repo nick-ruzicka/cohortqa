@@ -1,0 +1,7 @@
+name: bad_mock
+description: api_mock response is a string instead of a JSON body.
+based_on: all
+modifications:
+  api_mocks:
+    - endpoint: /api/roles
+      response: "not a JSON object"

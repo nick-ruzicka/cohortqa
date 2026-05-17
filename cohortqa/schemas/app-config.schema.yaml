@@ -1,0 +1,46 @@
+# PersonaLab app-config schema
+#
+# An app.yaml describes how PersonaLab should drive an application:
+# which routes exist, what actions are available on each, and which
+# friction signals to look for. This file is the reference; the
+# validator in personalab/core/persona_schema.py enforces it.
+#
+# All field types use a tiny vocabulary:
+#   str       — string
+#   int       — integer
+#   bool      — true/false
+#   url       — string matching http(s)://...
+#   list[X]   — list whose items match X
+#   ?         — optional (trailing); everything else is required
+#
+# ─── Top-level keys ──────────────────────────────────────────────────────────
+
+app:
+  name: str
+  dev_server: url
+  description: str
+
+routes:
+  - path: str                     # e.g. "/today"
+    purpose: str                  # one-line human description
+    actions: list[str]            # action names defined under `actions:` below
+    detail_routes?: list[Route]   # nested route specs reachable from this page
+    expected_load_time_ms?: int   # default 2000
+
+actions:
+  - name: str
+    selector: str                 # CSS selector or data-testid pattern
+    requires?: list[str]          # prerequisites, e.g. "role_visible"
+    side_effects?: list[str]      # e.g. "emits_event:role.pinned"
+
+friction_signals:
+  - type: str                     # one of:
+                                  #   navigation, scoring_opacity,
+                                  #   archetype_confusion, data_density,
+                                  #   missing_action, broken_link, slow_load,
+                                  #   empty_state
+    description: str
+
+personas_dir: str                 # path relative to app.yaml's directory
+scenarios_dir: str
+runs_dir: str

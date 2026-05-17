@@ -1,0 +1,20 @@
+identity:
+  name: Test Persona
+  role: Software Engineer
+  background: 5 years building distributed systems.
+
+target_archetypes: [backend-eng]
+
+location_preferences: [hybrid-NYC]
+
+comp_floor: 200000
+
+behavioral:
+  click_speed: medium
+  reads_details: true
+  rejection_threshold: high
+  detail_dwell_ms: 30000
+
+meta_attitude: Skeptical, time-pressed, knows what they want.
+
+friction_sensitivities: [navigation, slow_load]

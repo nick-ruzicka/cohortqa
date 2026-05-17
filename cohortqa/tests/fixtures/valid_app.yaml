@@ -1,0 +1,25 @@
+app:
+  name: TestApp
+  dev_server: http://localhost:3000
+  description: Minimal valid app for schema tests.
+
+routes:
+  - path: /home
+    purpose: Landing page.
+    actions: [click_cta]
+    expected_load_time_ms: 1500
+
+actions:
+  - name: click_cta
+    selector: "[data-testid='primary-cta']"
+    side_effects: ["emits_event:cta.clicked"]
+
+friction_signals:
+  - type: navigation
+    description: Persona can't find their way back to start.
+  - type: slow_load
+    description: Page takes too long to render.
+
+personas_dir: personas
+scenarios_dir: scenarios
+runs_dir: runs

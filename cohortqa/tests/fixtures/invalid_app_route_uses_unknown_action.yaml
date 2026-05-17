@@ -1,0 +1,21 @@
+app:
+  name: TestApp
+  dev_server: http://localhost:3000
+  description: Route references action that isn't defined.
+
+routes:
+  - path: /home
+    purpose: Landing.
+    actions: [click_cta, undefined_action]
+
+actions:
+  - name: click_cta
+    selector: "[data-testid='primary-cta']"
+
+friction_signals:
+  - type: navigation
+    description: Lost.
+
+personas_dir: personas
+scenarios_dir: scenarios
+runs_dir: runs
