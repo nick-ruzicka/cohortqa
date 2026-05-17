@@ -34,6 +34,7 @@ from .analyzer import (
     _default_client,
     _usage_to_dict,
 )
+from ._credit_check import reraise_if_credits_exhausted
 
 
 DEFAULT_MAX_TOKENS = 8000
@@ -326,7 +327,14 @@ class Synthesizer:
             )
 
         kwargs = self.build_messages_kwargs(reports)
-        response = self.client.messages.parse(**kwargs)
+        try:
+            response = self.client.messages.parse(**kwargs)
+        except Exception as exc:
+            # Convert Anthropic credit-balance errors into a clean
+            # CreditsExhaustedError with a top-up URL. Non-credit errors fall
+            # through to the original SDK exception.
+            reraise_if_credits_exhausted(exc)
+            raise
         spec = response.parsed_output
         if not isinstance(spec, PolishSpec):
             raise RuntimeError(

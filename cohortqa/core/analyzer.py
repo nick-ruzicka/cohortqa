@@ -35,6 +35,7 @@ from typing import Any, Iterable, Protocol
 
 from pydantic import BaseModel, Field
 
+from ._credit_check import reraise_if_credits_exhausted
 from .behavior import archetype_engagement
 from .runner import read_session
 
@@ -378,7 +379,14 @@ class FrictionAnalyzer:
         report. Returns a summary dict with paths + counts.
         """
         kwargs = self.build_messages_kwargs(persona, persona_id, session_path)
-        response = self.client.messages.parse(**kwargs)
+        try:
+            response = self.client.messages.parse(**kwargs)
+        except Exception as exc:
+            # Convert Anthropic credit-balance errors into a clean
+            # CreditsExhaustedError with a top-up URL. Non-credit errors fall
+            # through to the original SDK exception.
+            reraise_if_credits_exhausted(exc)
+            raise
         report = response.parsed_output
         if not isinstance(report, FrictionReport):  # defensive
             raise RuntimeError(
