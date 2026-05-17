@@ -243,14 +243,20 @@ def _build_user_message(events: list[dict[str, Any]]) -> str:
         }
         ps = ev.get("page_state")
         if isinstance(ps, dict):
+            # selector_probe carries the per-selector matched_count + eval_error
+            # signal the analyzer needs to distinguish "no affordance" from
+            # "stale selector" from "page didn't hydrate." Without this the
+            # taxonomy collapses three distinct conditions into missing_action.
             e["page_state"] = {
                 "url": ps.get("url"),
                 "status": ps.get("status"),
                 "title": ps.get("title"),
                 "body_text_length": ps.get("body_text_length"),
                 "visible_action_names": ps.get("visible_action_names"),
+                "selector_probe": ps.get("selector_probe"),
                 "console_errors": ps.get("console_errors"),
                 "nav_error": ps.get("nav_error"),
+                "capture_error": ps.get("capture_error"),
                 "entered_via": ps.get("entered_via"),
             }
         # Drop keys whose value is None to keep the payload compact.

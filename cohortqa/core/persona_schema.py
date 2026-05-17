@@ -30,6 +30,12 @@ import yaml
 # personalab/schemas/app-config.schema.yaml. Apps may use any subset; personas
 # may only declare sensitivities to types the app also declares (validated
 # cross-config in ``validate_persona_against_app``).
+#
+# `instrumentation_gap` is the schema escape hatch added in feat/personalab-
+# improvements for the C6 cascade: when the runner can't tell whether a page
+# lacks an affordance or PersonaLab's selector is stale, the analyzer must
+# have somewhere to file the uncertainty. Without this slot, every
+# measurement failure was forced into missing_action/empty_state.
 KNOWN_FRICTION_TYPES = frozenset({
     "navigation",
     "scoring_opacity",
@@ -39,6 +45,7 @@ KNOWN_FRICTION_TYPES = frozenset({
     "broken_link",
     "slow_load",
     "empty_state",
+    "instrumentation_gap",
 })
 
 KNOWN_CLICK_SPEEDS = frozenset({"slow", "medium", "medium-fast", "fast"})

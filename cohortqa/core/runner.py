@@ -254,6 +254,7 @@ class PersonaRunner:
             "title": "",
             "body_text_length": 0,
             "visible_action_names": [],
+            "selector_probe": [],
             "console_errors": list(self.console_errors),
             "nav_error": nav_error,
         }
@@ -262,9 +263,11 @@ class PersonaRunner:
                 page_state["title"] = await page.title()
                 body_text = await page.evaluate("() => document.body.innerText || ''")
                 page_state["body_text_length"] = len(body_text)
-                page_state["visible_action_names"] = await _visible_action_names(
+                probe = await _probe_route_actions(
                     page, route["actions"], self.app_config["actions"]
                 )
+                page_state["selector_probe"] = probe
+                page_state["visible_action_names"] = _visible_names_from_probe(probe)
             except Exception as exc:  # noqa: BLE001
                 page_state["capture_error"] = repr(exc)
 
@@ -401,12 +404,14 @@ class PersonaRunner:
             # Capture page state for the detail route — the persona is
             # already here, so render_time is 0 (the parent action's click
             # is what brought them here, and its dwell already happened).
+            probe: list[dict[str, Any]] = []
             try:
                 title = await page.title()
                 body_text = await page.evaluate("() => document.body.innerText || ''")
-                visible = await _visible_action_names(
+                probe = await _probe_route_actions(
                     page, detail.get("actions", []), self.app_config["actions"]
                 )
+                visible = _visible_names_from_probe(probe)
             except Exception as exc:  # noqa: BLE001
                 title, body_text, visible = "", "", []
                 self._record(
@@ -425,6 +430,7 @@ class PersonaRunner:
                     "title": title,
                     "body_text_length": len(body_text),
                     "visible_action_names": visible,
+                    "selector_probe": probe,
                     "console_errors": list(self.console_errors),
                     "entered_via": "detail_route_traversal",
                 },
@@ -548,29 +554,63 @@ def _matches_path_pattern(actual_path: str, pattern: str) -> bool:
     return True
 
 
-async def _visible_action_names(
+async def _probe_route_actions(
     page: Any,
     route_action_names: Iterable[str],
     all_actions: Iterable[dict[str, Any]],
-) -> list[str]:
-    """Return the subset of route_action_names whose selectors actually
-    resolve to at least one element on the current page."""
+) -> list[dict[str, Any]]:
+    """Probe each declared action's selector and return structured results.
+
+    Each entry is ``{name, selector, matched_count, eval_error}``:
+
+    - ``matched_count``: how many DOM elements the selector resolved to.
+      0 = no match. >=1 = present.
+    - ``eval_error``: ``repr(exc)`` if Playwright raised while evaluating
+      the selector (invalid syntax, page navigated away, etc.), else None.
+
+    The previous ``_visible_action_names`` collapsed three distinct
+    conditions into one ``[]`` output (no match / eval error / unknown
+    action), which is the root of the C6 false-positive cascade — the
+    analyzer couldn't distinguish "no affordance" from "stale selector"
+    from "page not hydrated." The structured form lets it.
+    """
     by_name = {a["name"]: a for a in all_actions}
-    visible: list[str] = []
+    out: list[dict[str, Any]] = []
     for name in route_action_names:
         spec = by_name.get(name)
         if not spec:
+            out.append({
+                "name": name,
+                "selector": None,
+                "matched_count": 0,
+                "eval_error": "action_not_defined_in_app_config",
+            })
             continue
+        selector = spec["selector"]
         try:
-            count = await page.locator(spec["selector"]).count()
-            if count > 0:
-                visible.append(name)
-        except Exception:  # noqa: BLE001
-            # A selector failing to evaluate is itself information, but we
-            # don't surface it here — the runner records a separate error
-            # event if the action is later attempted.
-            pass
-    return visible
+            count = await page.locator(selector).count()
+            out.append({
+                "name": name,
+                "selector": selector,
+                "matched_count": int(count),
+                "eval_error": None,
+            })
+        except Exception as exc:  # noqa: BLE001
+            out.append({
+                "name": name,
+                "selector": selector,
+                "matched_count": 0,
+                "eval_error": repr(exc),
+            })
+    return out
+
+
+def _visible_names_from_probe(probe: list[dict[str, Any]]) -> list[str]:
+    """Back-compat extraction: names whose selector matched at least one
+    element. Kept as a separate function (vs inline) so the analyzer's
+    trimmed event payload can still expose ``visible_action_names``
+    while the structured probe carries the richer signal."""
+    return [p["name"] for p in probe if p.get("matched_count", 0) > 0]
 
 
 # ─── Convenience: read a session JSONL back ───────────────────────────────────
