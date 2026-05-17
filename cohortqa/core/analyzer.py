@@ -54,9 +54,11 @@ class FrictionEvent(BaseModel):
     severity: str = Field(description="high | medium | low")
     signal_type: str = Field(
         description=(
-            "One of the app-declared friction_signal types: navigation, "
-            "scoring_opacity, archetype_confusion, data_density, "
-            "missing_action, broken_link, slow_load, empty_state."
+            "One of the app-declared friction_signal types: see system prompt "
+            "for the live list. Use the exact strings the taxonomy declares "
+            "(e.g. navigation, scoring_opacity, archetype_confusion, "
+            "data_density, missing_action, broken_link, slow_load, "
+            "empty_state, instrumentation_gap). Do not invent new types."
         )
     )
     location: str = Field(
@@ -68,6 +70,23 @@ class FrictionEvent(BaseModel):
     )
     what_actually_happened: str = Field(
         description="What the runner actually observed."
+    )
+    confidence: str = Field(
+        default="high",
+        description=(
+            "high | medium | low. Mark 'low' when the underlying session "
+            "signal is suspicious (e.g. body_text_length=0 with status=200, "
+            "or visible_action_names=[] on a route the runner couldn't "
+            "verify hydrated). 'medium' for inferences that depend on a "
+            "single observation. 'high' when multiple session events agree."
+        ),
+    )
+    evidence_event_ts: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Timestamps (ts field) of the specific session-log events that "
+            "support this finding. Anchor every event to at least one ts."
+        ),
     )
 
 
@@ -149,18 +168,46 @@ def _build_friction_taxonomy(app_config: dict[str, Any]) -> str:
     lines += [
         "",
         "## Output discipline",
-        "- Anchor every friction_event to a concrete event in the session log.",
+        "- Anchor every friction_event to one or more concrete events in the "
+        "  session log by copying their `ts` string into `evidence_event_ts`. "
+        "  An event without anchors is suspect; prefer to omit it.",
         "- Use severity 'high' when the persona is blocked, 'medium' when "
         "  they're annoyed but can proceed, 'low' for polish.",
         "- Use signal_type values *only* from the taxonomy above — do not invent.",
-        "- Prefer 3-7 friction events over a dump of 20.",
+        "- Report as many events as the evidence supports — zero is fine on "
+        "  a clean session. Do not pad. Quality over count.",
         "- The runner logs 'no matching affordance' reasoning events when the "
-        "  persona wanted an action the page didn't expose — these are first-"
-        "  class missing_action friction; surface them.",
+        "  persona wanted an action the page didn't expose. Before filing as "
+        "  `missing_action`, check the surrounding nav event for the route: "
+        "  if `hydration_settled` is false, or `body_text_length` is 0 or "
+        "  implausibly small, or any entry in `selector_probe` has a "
+        "  populated `eval_error`, the affordance may exist but the runner "
+        "  couldn't see it — file as `instrumentation_gap` with "
+        "  `confidence=low` instead. A truly missing affordance has "
+        "  `hydration_settled=true`, a populated body, and all selector "
+        "  probes returning matched_count=0 with eval_error=null.",
         "- The runner logs 'intent logged, click suppressed' when an action "
         "  would have mutated protected files; treat the *attempted intent* "
         "  (e.g. 'persona wanted to mark role evaluated') as signal, not the "
         "  suppression itself.",
+        "- Error events carry a structured `error_type` in their page_state: "
+        "  timeout, not_found, not_visible, blocked_by_overlay, detached, "
+        "  other. Tier severity accordingly — a `timeout` on a slow page is "
+        "  a different finding from `not_found` (stale selector / missing "
+        "  affordance) on a fast page, even though both surface as action "
+        "  errors. `not_visible` and `blocked_by_overlay` usually mean the "
+        "  affordance exists but is unreachable in this state — not "
+        "  missing_action friction, more like a UI defect.",
+        "- console_errors are now route-attributed: each entry is "
+        "  {type, text, route} and the `route` field tells you which path "
+        "  was active when it fired. Attribute findings to that route, not "
+        "  to whichever route happened to capture the snapshot.",
+        "- Confidence calibration:",
+        "  * high: multiple session events agree, or a clear timeout/error.",
+        "  * medium: one observation, but corroborated by page_state fields.",
+        "  * low: derived from a single suspect signal (body=0, status=200; "
+        "    visible=[] on a route the runner may not have given time to "
+        "    hydrate). Always mark `instrumentation_gap` findings 'low'.",
     ]
     return "\n".join(lines)
 
@@ -206,20 +253,32 @@ def _build_user_message(events: list[dict[str, Any]]) -> str:
             "event_type": ev.get("event_type"),
             "route": ev.get("route"),
             "action": ev.get("action"),
+            "selector": ev.get("selector"),
             "reasoning": ev.get("reasoning"),
             "render_time_ms": ev.get("render_time_ms"),
         }
         ps = ev.get("page_state")
         if isinstance(ps, dict):
+            # selector_probe carries the per-selector matched_count + eval_error
+            # signal the analyzer needs to distinguish "no affordance" from
+            # "stale selector" from "page didn't hydrate." Without this the
+            # taxonomy collapses three distinct conditions into missing_action.
+            # error_type / exception_repr on error events let the model tier
+            # severity by failure mode (timeout != not_found != blocked_by_overlay).
             e["page_state"] = {
                 "url": ps.get("url"),
                 "status": ps.get("status"),
                 "title": ps.get("title"),
                 "body_text_length": ps.get("body_text_length"),
                 "visible_action_names": ps.get("visible_action_names"),
+                "selector_probe": ps.get("selector_probe"),
+                "hydration_settled": ps.get("hydration_settled"),
                 "console_errors": ps.get("console_errors"),
                 "nav_error": ps.get("nav_error"),
+                "capture_error": ps.get("capture_error"),
                 "entered_via": ps.get("entered_via"),
+                "error_type": ps.get("error_type"),
+                "exception_repr": ps.get("exception_repr"),
             }
         # Drop keys whose value is None to keep the payload compact.
         trimmed.append({k: v for k, v in e.items() if v is not None})
@@ -256,14 +315,22 @@ def render_markdown(persona_id: str, persona: dict[str, Any], report: FrictionRe
     if not events_sorted:
         lines.append("_None surfaced._")
     for ev in events_sorted:
+        confidence_tag = ""
+        if (ev.confidence or "").lower() == "low":
+            confidence_tag = " ⚠️ low-confidence"
+        elif (ev.confidence or "").lower() == "medium":
+            confidence_tag = " · medium-confidence"
         lines += [
-            f"### [{ev.severity.upper()}] {ev.signal_type} — {ev.location}",
+            f"### [{ev.severity.upper()}] {ev.signal_type} — {ev.location}{confidence_tag}",
             ev.description.strip(),
             "",
             f"- **Expected:** {ev.what_persona_expected.strip()}",
             f"- **Actually:** {ev.what_actually_happened.strip()}",
-            "",
         ]
+        if ev.evidence_event_ts:
+            anchors = ", ".join(f"`{t}`" for t in ev.evidence_event_ts)
+            lines.append(f"- **Evidence ts:** {anchors}")
+        lines.append("")
 
     if report.ux_issues:
         lines.append("## UX issues")

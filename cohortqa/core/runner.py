@@ -153,7 +153,16 @@ class PersonaRunner:
             self.runs_dir = Path(app_config["runs_dir"])
 
         self.events: list[SessionEvent] = []
-        self.console_errors: list[str] = []
+        # Console errors are stored as structured dicts now:
+        #   {"type": "error"|"warning", "text": str, "route": str | None}
+        # The route field is whichever path was active when the error fired
+        # (or None if it fired before the first nav). This lets the analyzer
+        # attribute errors to the route that generated them rather than to
+        # whichever route happened to be sampled next — the old cumulative
+        # list created phantom "/context has 21 console errors" findings
+        # when those errors had actually come from /companies/[slug].
+        self.console_errors: list[dict[str, Any]] = []
+        self._active_route: str | None = None
         self.session_path: Path | None = None
 
     # ─── Event helpers ────────────────────────────────────────────────────────
@@ -218,7 +227,11 @@ class PersonaRunner:
                 )
                 page.on(
                     "pageerror",
-                    lambda err: self.console_errors.append(str(err)),
+                    lambda err: self.console_errors.append({
+                        "type": "pageerror",
+                        "text": str(err),
+                        "route": self._active_route,
+                    }),
                 )
 
                 for route in self.app_config["routes"]:
@@ -235,8 +248,15 @@ class PersonaRunner:
 
     async def _visit_route(self, page: Any, route: dict[str, Any]) -> None:
         url = self.dev_server.rstrip("/") + route["path"]
+        # Tag any console errors that fire during this navigation with the
+        # path that's loading. Mid-flight errors from late callbacks of the
+        # previous route still attribute to the previous route — but that's
+        # closer to truth than the old "everything attributes to whoever
+        # the page is currently showing" behaviour.
+        self._active_route = route["path"]
         before = time.monotonic()
         nav_error: str | None = None
+        hydration_settled = False
         try:
             response = await page.goto(url, wait_until="domcontentloaded", timeout=10000)
             status = response.status if response else None
@@ -244,17 +264,36 @@ class PersonaRunner:
             status = None
             nav_error = repr(exc)
 
+        # Wait for the page to actually paint content before measuring
+        # `body_text_length` and probing selectors. Previously the runner
+        # measured immediately after DOMContentLoaded, which read the
+        # SPA shell — generating false `body=0` / `body=498` signals that
+        # the analyzer then misfiled as empty_state / missing_action.
+        # Render time INCLUDES this wait: "time to usable" matters more
+        # to the persona than "time to shell."
+        if nav_error is None:
+            hydration_settled = await _wait_for_hydration(page)
+
         render_ms = int((time.monotonic() - before) * 1000)
 
         # Capture page state. If navigation failed we still emit a capture
         # event with the failure so the analyzer sees a friction signal.
+        # Filter console errors to those that fired while this route was
+        # active. Untagged errors (route=None — fired before any nav, rare)
+        # attach to the first route to keep them in the log.
+        route_errors = [
+            e for e in self.console_errors
+            if isinstance(e, dict) and e.get("route") == route["path"]
+        ]
         page_state: dict[str, Any] = {
             "url": url,
             "status": status,
             "title": "",
             "body_text_length": 0,
             "visible_action_names": [],
-            "console_errors": list(self.console_errors),
+            "selector_probe": [],
+            "hydration_settled": hydration_settled,
+            "console_errors": route_errors,
             "nav_error": nav_error,
         }
         if nav_error is None:
@@ -262,9 +301,11 @@ class PersonaRunner:
                 page_state["title"] = await page.title()
                 body_text = await page.evaluate("() => document.body.innerText || ''")
                 page_state["body_text_length"] = len(body_text)
-                page_state["visible_action_names"] = await _visible_action_names(
+                probe = await _probe_route_actions(
                     page, route["actions"], self.app_config["actions"]
                 )
+                page_state["selector_probe"] = probe
+                page_state["visible_action_names"] = _visible_names_from_probe(probe)
             except Exception as exc:  # noqa: BLE001
                 page_state["capture_error"] = repr(exc)
 
@@ -401,12 +442,14 @@ class PersonaRunner:
             # Capture page state for the detail route — the persona is
             # already here, so render_time is 0 (the parent action's click
             # is what brought them here, and its dwell already happened).
+            probe: list[dict[str, Any]] = []
             try:
                 title = await page.title()
                 body_text = await page.evaluate("() => document.body.innerText || ''")
-                visible = await _visible_action_names(
+                probe = await _probe_route_actions(
                     page, detail.get("actions", []), self.app_config["actions"]
                 )
+                visible = _visible_names_from_probe(probe)
             except Exception as exc:  # noqa: BLE001
                 title, body_text, visible = "", "", []
                 self._record(
@@ -415,6 +458,14 @@ class PersonaRunner:
                     reasoning=f"Detail capture failed: {exc!r}",
                 )
 
+            # Detail routes inherit the parent's active_route attribution
+            # for console errors — set the detail path active before
+            # capture so subsequent errors land here.
+            self._active_route = detail["path"]
+            detail_errors = [
+                e for e in self.console_errors
+                if isinstance(e, dict) and e.get("route") == detail["path"]
+            ]
             self._record(
                 event_type="nav",
                 route=detail["path"],
@@ -425,7 +476,8 @@ class PersonaRunner:
                     "title": title,
                     "body_text_length": len(body_text),
                     "visible_action_names": visible,
-                    "console_errors": list(self.console_errors),
+                    "selector_probe": probe,
+                    "console_errors": detail_errors,
                     "entered_via": "detail_route_traversal",
                 },
                 reasoning=(
@@ -484,21 +536,32 @@ class PersonaRunner:
                 ),
             )
         except Exception as exc:  # noqa: BLE001
+            error_type = _classify_action_error(exc)
             self._record(
                 event_type="error",
                 route=route["path"],
                 action=action["name"],
                 selector=selector,
-                reasoning=f"Action failed: {exc!r}",
+                reasoning=f"Action failed [error_type={error_type}]: {exc!r}",
+                page_state={
+                    "error_type": error_type,
+                    "exception_repr": repr(exc),
+                },
             )
 
     # ─── Console plumbing ─────────────────────────────────────────────────────
 
     def _on_console(self, msg: Any) -> None:
         # Capture errors and warnings only — info/debug noise drowns signal.
+        # Tag each one with the route active when it fired so the analyzer
+        # can attribute it correctly.
         try:
             if msg.type in ("error", "warning"):
-                self.console_errors.append(f"[{msg.type}] {msg.text}")
+                self.console_errors.append({
+                    "type": msg.type,
+                    "text": msg.text,
+                    "route": self._active_route,
+                })
         except Exception:  # noqa: BLE001
             pass
 
@@ -548,29 +611,137 @@ def _matches_path_pattern(actual_path: str, pattern: str) -> bool:
     return True
 
 
-async def _visible_action_names(
+def _classify_action_error(exc: Exception) -> str:
+    """Map a Playwright action-failure exception to a structured error_type.
+
+    Returns one of: timeout, not_found, not_visible, blocked_by_overlay,
+    detached, other. The analyzer reads this to tier severity by failure
+    mode — a `timeout` on a slow page is a different finding from a
+    `not_found` on a stable page even though both surface as action errors.
+    """
+    name = type(exc).__name__.lower()
+    msg = str(exc).lower()
+    if "timeout" in name or "timeout" in msg:
+        return "timeout"
+    # Order matters: 'not visible' / 'covered' / 'intercept' should win over
+    # generic 'not found' since Playwright nests these messages.
+    if "intercepts pointer events" in msg or "covered" in msg or "outside the viewport" in msg:
+        return "blocked_by_overlay"
+    if "not visible" in msg or "is hidden" in msg or "not stable" in msg:
+        return "not_visible"
+    if "detach" in msg or "destroyed" in msg or "navigated" in msg:
+        return "detached"
+    if "no element" in msg or "0 elements" in msg or "not found" in msg or "no node" in msg:
+        return "not_found"
+    return "other"
+
+
+# Hydration wait defaults. Reasonable for a Next.js SPA dev server; the
+# `min_body_chars` floor ignores tiny-body cases (e.g. /context which has
+# real but compact content) by also returning once body length stabilises
+# across two consecutive reads regardless of size. Made constants (not
+# config) to keep #2 minimal — backlog #8 will expose route-level overrides.
+HYDRATION_MAX_MS = 3000
+HYDRATION_SAMPLE_INTERVAL_MS = 200
+HYDRATION_MIN_BODY_CHARS = 200
+
+
+async def _wait_for_hydration(page: Any) -> bool:
+    """Block until the page's body text stabilises or a wall-clock cap.
+
+    Returns True if hydration is judged settled (body length stable across
+    two reads), False if we bailed at the cap. Pure observer — never
+    interacts with the page beyond reading ``document.body.innerText``.
+
+    The previous runner read body / probed selectors immediately after
+    ``domcontentloaded``, which gave false zero-body and zero-affordance
+    measurements on SPA routes whose data renders after first paint. This
+    helper waits for the actual content to land.
+    """
+    start = time.monotonic()
+    last_len = -1
+    while True:
+        try:
+            body_len = await page.evaluate("() => (document.body && document.body.innerText || '').length")
+        except Exception:  # noqa: BLE001
+            # Page may have navigated away or detached during the wait.
+            # Defer the diagnostic to the capture path's own error handling.
+            return False
+
+        # Stabilised at a non-trivial size: declare hydration done.
+        if body_len >= HYDRATION_MIN_BODY_CHARS and body_len == last_len:
+            return True
+        # Stabilised at a small size: probably a genuinely short page
+        # (e.g. /context after improvements). Two reads in a row at the
+        # same length is enough signal to stop waiting — we'd just be
+        # adding latency otherwise.
+        if body_len > 0 and body_len == last_len:
+            return True
+
+        last_len = body_len
+        elapsed_ms = (time.monotonic() - start) * 1000
+        if elapsed_ms + HYDRATION_SAMPLE_INTERVAL_MS > HYDRATION_MAX_MS:
+            return False
+        await page.wait_for_timeout(HYDRATION_SAMPLE_INTERVAL_MS)
+
+
+async def _probe_route_actions(
     page: Any,
     route_action_names: Iterable[str],
     all_actions: Iterable[dict[str, Any]],
-) -> list[str]:
-    """Return the subset of route_action_names whose selectors actually
-    resolve to at least one element on the current page."""
+) -> list[dict[str, Any]]:
+    """Probe each declared action's selector and return structured results.
+
+    Each entry is ``{name, selector, matched_count, eval_error}``:
+
+    - ``matched_count``: how many DOM elements the selector resolved to.
+      0 = no match. >=1 = present.
+    - ``eval_error``: ``repr(exc)`` if Playwright raised while evaluating
+      the selector (invalid syntax, page navigated away, etc.), else None.
+
+    The previous ``_visible_action_names`` collapsed three distinct
+    conditions into one ``[]`` output (no match / eval error / unknown
+    action), which is the root of the C6 false-positive cascade — the
+    analyzer couldn't distinguish "no affordance" from "stale selector"
+    from "page not hydrated." The structured form lets it.
+    """
     by_name = {a["name"]: a for a in all_actions}
-    visible: list[str] = []
+    out: list[dict[str, Any]] = []
     for name in route_action_names:
         spec = by_name.get(name)
         if not spec:
+            out.append({
+                "name": name,
+                "selector": None,
+                "matched_count": 0,
+                "eval_error": "action_not_defined_in_app_config",
+            })
             continue
+        selector = spec["selector"]
         try:
-            count = await page.locator(spec["selector"]).count()
-            if count > 0:
-                visible.append(name)
-        except Exception:  # noqa: BLE001
-            # A selector failing to evaluate is itself information, but we
-            # don't surface it here — the runner records a separate error
-            # event if the action is later attempted.
-            pass
-    return visible
+            count = await page.locator(selector).count()
+            out.append({
+                "name": name,
+                "selector": selector,
+                "matched_count": int(count),
+                "eval_error": None,
+            })
+        except Exception as exc:  # noqa: BLE001
+            out.append({
+                "name": name,
+                "selector": selector,
+                "matched_count": 0,
+                "eval_error": repr(exc),
+            })
+    return out
+
+
+def _visible_names_from_probe(probe: list[dict[str, Any]]) -> list[str]:
+    """Back-compat extraction: names whose selector matched at least one
+    element. Kept as a separate function (vs inline) so the analyzer's
+    trimmed event payload can still expose ``visible_action_names``
+    while the structured probe carries the richer signal."""
+    return [p["name"] for p in probe if p.get("matched_count", 0) > 0]
 
 
 # ─── Convenience: read a session JSONL back ───────────────────────────────────

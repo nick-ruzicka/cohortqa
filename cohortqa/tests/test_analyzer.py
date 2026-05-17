@@ -370,3 +370,69 @@ def test_analyzer_counts_high_severity(tmp_path):
     summary = analyzer.analyze_session(_persona(), "tp", _session_jsonl(tmp_path))
     assert summary["friction_event_count"] == 3
     assert summary["high_severity_count"] == 2  # case-insensitive
+
+
+# ─── Confidence + evidence schema (Phase B #4) ────────────────────────────────
+
+def test_friction_event_defaults_confidence_high_and_no_evidence():
+    """Old reports + LLM outputs that don't set the new fields must still
+    parse cleanly. Backward compat is non-negotiable: the JSON reports on
+    disk pre-improvement omit these fields entirely."""
+    ev = FrictionEvent(
+        severity="medium", signal_type="navigation", location="/x",
+        description=".", what_persona_expected=".", what_actually_happened=".",
+    )
+    assert ev.confidence == "high"
+    assert ev.evidence_event_ts == []
+
+
+def test_friction_event_round_trips_confidence_and_evidence():
+    ev = FrictionEvent(
+        severity="high", signal_type="instrumentation_gap", location="/context",
+        description="Possibly missing instrumentation.",
+        what_persona_expected="Affordance visible.",
+        what_actually_happened="visible=[] but page may have been pre-hydration.",
+        confidence="low",
+        evidence_event_ts=["2026-05-17T07:08:42.123Z"],
+    )
+    dumped = ev.model_dump()
+    assert dumped["confidence"] == "low"
+    assert dumped["evidence_event_ts"] == ["2026-05-17T07:08:42.123Z"]
+
+
+def test_render_markdown_tags_low_confidence_events():
+    report = FrictionReport(
+        friction_events=[
+            FrictionEvent(
+                severity="high", signal_type="instrumentation_gap",
+                location="/context",
+                description="Could be missing instrumentation.",
+                what_persona_expected="Tabs visible",
+                what_actually_happened="visible=[]",
+                confidence="low",
+                evidence_event_ts=["2026-05-17T07:08:42.123Z"],
+            ),
+            FrictionEvent(
+                severity="medium", signal_type="navigation", location="/x",
+                description="Confirmed.", what_persona_expected="A",
+                what_actually_happened="B", confidence="high",
+            ),
+        ],
+        overall_verdict=".",
+    )
+    md = render_markdown("tp", _persona(), report)
+    assert "⚠️ low-confidence" in md
+    assert "Evidence ts" in md
+    assert "2026-05-17T07:08:42.123Z" in md
+
+
+def test_analyzer_taxonomy_prompts_for_confidence_calibration():
+    """The system prompt must instruct the model on when to mark
+    confidence=low and how to anchor evidence — otherwise the new schema
+    fields will sit empty."""
+    cfg = _app_config()
+    taxonomy = _build_friction_taxonomy(cfg)
+    assert "evidence_event_ts" in taxonomy
+    assert "Confidence calibration" in taxonomy or "confidence" in taxonomy.lower()
+    # Must explicitly mention the instrumentation_gap escape hatch.
+    assert "instrumentation_gap" in taxonomy
