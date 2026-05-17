@@ -302,3 +302,73 @@ def test_synthesizer_passes_adaptive_thinking_and_caches_system(tmp_path):
 def test_default_target_pattern_count_is_ten():
     assert DEFAULT_TARGET_PATTERN_COUNT == 10
     assert SynthesizerConfig().target_pattern_count == 10
+
+
+# ─── Confidence on FrictionPattern (Phase B #4) ──────────────────────────────
+
+def test_friction_pattern_defaults_confidence_high():
+    """Backward compat: existing reports/specs don't carry a confidence
+    field. The model must default to 'high' rather than erroring or
+    silently treating absence as low."""
+    p = FrictionPattern(
+        title="x", signal_type="navigation", severity_range="medium",
+        personas_affected=["a"], description=".",
+        proposed_fix=".", implementation_approach=".",
+        estimated_effort="S",
+    )
+    assert p.confidence == "high"
+
+
+def test_render_polish_spec_tags_low_confidence_patterns():
+    spec = PolishSpec(
+        overall_summary="Mostly real, one suspect.",
+        patterns=[
+            FrictionPattern(
+                title="Real timeout",
+                signal_type="slow_load",
+                severity_range="high",
+                personas_affected=["a", "b", "c"],
+                description="Pipeline timed out for three personas.",
+                proposed_fix="Profile /pipeline route handler.",
+                implementation_approach="dashboard-web/app/pipeline/",
+                estimated_effort="L",
+                confidence="high",
+            ),
+            FrictionPattern(
+                title="Possibly instrumented",
+                signal_type="instrumentation_gap",
+                severity_range="high",
+                personas_affected=["a", "b", "c", "d", "e", "f"],
+                description="All six saw visible=[]; may be selector stale.",
+                proposed_fix="Verify selectors against actual /context.",
+                implementation_approach="qa/app.yaml selectors for /context.",
+                estimated_effort="S",
+                confidence="low",
+            ),
+        ],
+    )
+    md = render_polish_spec(_app_config(), spec, [
+        {"persona_id": "p", "report_path": "/r/p.json", "report": {}},
+    ])
+    # Low-confidence pattern is visibly tagged.
+    assert "⚠️ low-confidence" in md
+    assert "verify before building" in md
+    # High-confidence pattern is NOT tagged.
+    lines = md.splitlines()
+    real_header = next(line for line in lines if "Real timeout" in line)
+    assert "⚠️" not in real_header
+
+
+def test_synth_system_prompt_instructs_on_confidence():
+    """The prompt must teach the model about the confidence-low rule for
+    instrumentation_gap and single-shared-signal patterns. Otherwise the
+    new field will sit at default 'high' forever."""
+    cfg = _app_config()
+    prompt = _build_synth_system_prompt(cfg)
+    assert "confidence" in prompt
+    # Must call out the single-root-cause amplifier risk explicitly.
+    assert "one root cause counted" in prompt or "single shared session" in prompt.lower() \
+        or "instrumentation_gap" in prompt
+    # No padding floor anymore.
+    assert "as the evidence supports" in prompt
+    assert "Do not pad" in prompt

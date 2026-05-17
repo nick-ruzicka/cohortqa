@@ -53,9 +53,11 @@ class FrictionEvent(BaseModel):
     severity: str = Field(description="high | medium | low")
     signal_type: str = Field(
         description=(
-            "One of the app-declared friction_signal types: navigation, "
-            "scoring_opacity, archetype_confusion, data_density, "
-            "missing_action, broken_link, slow_load, empty_state."
+            "One of the app-declared friction_signal types: see system prompt "
+            "for the live list. Use the exact strings the taxonomy declares "
+            "(e.g. navigation, scoring_opacity, archetype_confusion, "
+            "data_density, missing_action, broken_link, slow_load, "
+            "empty_state, instrumentation_gap). Do not invent new types."
         )
     )
     location: str = Field(
@@ -67,6 +69,23 @@ class FrictionEvent(BaseModel):
     )
     what_actually_happened: str = Field(
         description="What the runner actually observed."
+    )
+    confidence: str = Field(
+        default="high",
+        description=(
+            "high | medium | low. Mark 'low' when the underlying session "
+            "signal is suspicious (e.g. body_text_length=0 with status=200, "
+            "or visible_action_names=[] on a route the runner couldn't "
+            "verify hydrated). 'medium' for inferences that depend on a "
+            "single observation. 'high' when multiple session events agree."
+        ),
+    )
+    evidence_event_ts: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Timestamps (ts field) of the specific session-log events that "
+            "support this finding. Anchor every event to at least one ts."
+        ),
     )
 
 
@@ -148,18 +167,32 @@ def _build_friction_taxonomy(app_config: dict[str, Any]) -> str:
     lines += [
         "",
         "## Output discipline",
-        "- Anchor every friction_event to a concrete event in the session log.",
+        "- Anchor every friction_event to one or more concrete events in the "
+        "  session log by copying their `ts` string into `evidence_event_ts`. "
+        "  An event without anchors is suspect; prefer to omit it.",
         "- Use severity 'high' when the persona is blocked, 'medium' when "
         "  they're annoyed but can proceed, 'low' for polish.",
         "- Use signal_type values *only* from the taxonomy above — do not invent.",
-        "- Prefer 3-7 friction events over a dump of 20.",
+        "- Report as many events as the evidence supports — zero is fine on "
+        "  a clean session. Do not pad. Quality over count.",
         "- The runner logs 'no matching affordance' reasoning events when the "
-        "  persona wanted an action the page didn't expose — these are first-"
-        "  class missing_action friction; surface them.",
+        "  persona wanted an action the page didn't expose. Before filing as "
+        "  `missing_action`, check the surrounding nav event for the route: "
+        "  if `body_text_length` is 0 or implausibly small, or if "
+        "  `selector_eval_errors` is present, the affordance may exist but "
+        "  the runner couldn't see it — file as `instrumentation_gap` with "
+        "  `confidence=low` instead. A truly missing affordance has a "
+        "  populated body and clean capture.",
         "- The runner logs 'intent logged, click suppressed' when an action "
         "  would have mutated protected files; treat the *attempted intent* "
         "  (e.g. 'persona wanted to mark role evaluated') as signal, not the "
         "  suppression itself.",
+        "- Confidence calibration:",
+        "  * high: multiple session events agree, or a clear timeout/error.",
+        "  * medium: one observation, but corroborated by page_state fields.",
+        "  * low: derived from a single suspect signal (body=0, status=200; "
+        "    visible=[] on a route the runner may not have given time to "
+        "    hydrate). Always mark `instrumentation_gap` findings 'low'.",
     ]
     return "\n".join(lines)
 
@@ -255,14 +288,22 @@ def render_markdown(persona_id: str, persona: dict[str, Any], report: FrictionRe
     if not events_sorted:
         lines.append("_None surfaced._")
     for ev in events_sorted:
+        confidence_tag = ""
+        if (ev.confidence or "").lower() == "low":
+            confidence_tag = " ⚠️ low-confidence"
+        elif (ev.confidence or "").lower() == "medium":
+            confidence_tag = " · medium-confidence"
         lines += [
-            f"### [{ev.severity.upper()}] {ev.signal_type} — {ev.location}",
+            f"### [{ev.severity.upper()}] {ev.signal_type} — {ev.location}{confidence_tag}",
             ev.description.strip(),
             "",
             f"- **Expected:** {ev.what_persona_expected.strip()}",
             f"- **Actually:** {ev.what_actually_happened.strip()}",
-            "",
         ]
+        if ev.evidence_event_ts:
+            anchors = ", ".join(f"`{t}`" for t in ev.evidence_event_ts)
+            lines.append(f"- **Evidence ts:** {anchors}")
+        lines.append("")
 
     if report.ux_issues:
         lines.append("## UX issues")

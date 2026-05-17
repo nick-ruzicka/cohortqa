@@ -48,9 +48,9 @@ class FrictionPattern(BaseModel):
     title: str = Field(description="Short pattern name, e.g. 'Score reason is invisible'")
     signal_type: str = Field(
         description=(
-            "Friction signal type from the app taxonomy "
-            "(navigation, scoring_opacity, archetype_confusion, data_density, "
-            "missing_action, broken_link, slow_load, empty_state)."
+            "Friction signal type from the app taxonomy. Use the exact strings "
+            "the system-prompt taxonomy declares; do not invent new types. "
+            "Includes instrumentation_gap for measurement-uncertainty findings."
         )
     )
     severity_range: str = Field(
@@ -74,6 +74,16 @@ class FrictionPattern(BaseModel):
         description=(
             "Short attributions tying the pattern to specific persona reports — "
             "e.g. 'senior-gtm-eng-nyc: pipeline row score 7/10 without reason chip'."
+        ),
+    )
+    confidence: str = Field(
+        default="high",
+        description=(
+            "high | medium | low. 'low' when the underlying per-persona findings "
+            "were themselves low-confidence (e.g. all six personas reported the "
+            "same instrumentation_gap — that's one root cause counted six times, "
+            "not six independent confirmations). Patterns marked low MUST be "
+            "verified manually before acting on the proposed_fix."
         ),
     )
 
@@ -114,15 +124,29 @@ def _build_synth_system_prompt(app_config: dict[str, Any]) -> str:
         "- Find PATTERNS — issues appearing in 2+ personas. Single-persona "
         "  nits are deprioritised unless severity is high.",
         "- Group by signal_type so the resulting spec is scannable.",
-        "- Rank patterns by cross-persona impact × severity. Cap at ~10.",
+        "- Rank patterns by cross-persona impact × severity. Output as many "
+        "  patterns as the evidence supports — empty is fine. Do not pad.",
         "- For each pattern: title, signal_type, severity_range, "
         "  personas_affected, description, proposed_fix, "
         "  implementation_approach (concrete code/route hints), "
-        "  estimated_effort (S/M/L), evidence (short attribution lines).",
+        "  estimated_effort (S/M/L), evidence (short attribution lines), "
+        "  confidence (high/medium/low).",
         "- evidence MUST tie each pattern back to specific personas — quote "
         "  or paraphrase from the underlying friction events.",
         "- Effort scale: S = a few hours; M = a day; L = multi-day or "
         "  cross-cutting.",
+        "- Confidence calibration:",
+        "  * If a majority of supporting per-persona findings carry "
+        "    `confidence=low` (read it from each report's friction_events), "
+        "    the pattern itself is `confidence=low`.",
+        "  * If the pattern is built from a single shared session signal "
+        "    (e.g. every report mentions visible_action_names=[] on the same "
+        "    route), prefer `confidence=low` — that's one root cause counted "
+        "    N times, not N independent confirmations.",
+        "  * Patterns with `signal_type=instrumentation_gap` are always "
+        "    `confidence=low` and proposed_fix should be 'verify whether "
+        "    affordance exists and update app.yaml selector OR add missing "
+        "    instrumentation' rather than a UI build.",
         "- Write proposed_fix and implementation_approach so they can be "
         "  pasted into a new Claude Code session as the next polish brief — "
         "  concrete enough to act on without re-reading the source reports.",
@@ -222,9 +246,15 @@ def render_polish_spec(app_config: dict[str, Any], spec: PolishSpec,
 
     lines.append("## Patterns")
     for i, p in enumerate(spec.patterns, 1):
+        confidence_tag = ""
+        conf_lower = (p.confidence or "").lower()
+        if conf_lower == "low":
+            confidence_tag = " ⚠️ low-confidence — verify before building"
+        elif conf_lower == "medium":
+            confidence_tag = " · medium-confidence"
         lines += [
             "",
-            f"### {i}. {p.title} _({p.signal_type})_",
+            f"### {i}. {p.title} _({p.signal_type})_{confidence_tag}",
             f"**Severity:** {p.severity_range}  ·  "
             f"**Effort:** {p.estimated_effort}  ·  "
             f"**Personas affected:** {', '.join(p.personas_affected) or '_n/a_'}",
