@@ -17,6 +17,7 @@ from personalab.core.synthesizer import (
     SynthesizerConfig,
     _build_synth_system_prompt,
     _build_synth_user_message,
+    _summary_references_groups,
     find_latest_reports_per_persona,
     render_polish_spec,
 )
@@ -81,6 +82,19 @@ class _FakeMessages:
     def parse(self, **kwargs):
         self.calls.append(kwargs)
         return _FakeResponse(self.parsed_output, self.usage)
+
+
+class _FakeMessagesSequence:
+    """Returns a different parsed_output on each successive .parse() call."""
+    def __init__(self, outputs: list, usage=None):
+        self._outputs = list(outputs)
+        self.usage = usage or _FakeUsage()
+        self.calls: list[dict[str, Any]] = []
+
+    def parse(self, **kwargs):
+        self.calls.append(kwargs)
+        output = self._outputs.pop(0) if self._outputs else PolishSpec(overall_summary="")
+        return _FakeResponse(output, self.usage)
 
 
 class _FakeClient:
@@ -525,3 +539,196 @@ def test_synth_system_prompt_instructs_on_confidence():
     # No padding floor anymore.
     assert "as the evidence supports" in prompt
     assert "Do not pad" in prompt
+
+
+# ─── _summary_references_groups detection ───────────────────────────────
+
+def test_summary_references_groups_detects_prose_with_groups():
+    """Summary that names multiple pattern groups should trigger."""
+    summary = (
+        "Next polish round should focus on three pattern clusters: "
+        "first group is scoring visibility, second group is dead-end "
+        "surfaces, third group is performance."
+    )
+    assert _summary_references_groups(summary) is True
+
+
+def test_summary_references_groups_ignores_sparse_mentions():
+    """A summary that says 'pattern' once should NOT trigger."""
+    assert _summary_references_groups("One scoring pattern was found.") is False
+
+
+def test_summary_references_groups_empty():
+    assert _summary_references_groups("") is False
+    assert _summary_references_groups(None) is False
+
+
+# ─── Re-prompt fallback (Phase C) ──────────────────────────────────────
+
+def _prose_only_summary() -> str:
+    return (
+        "Next polish round should focus on three pattern clusters: "
+        "first group is scoring visibility (patterns around score "
+        "opacity), second group is dead-end surfaces (patterns on "
+        "/context and /today), third group is performance (patterns "
+        "around slow load)."
+    )
+
+
+def _recovered_pattern() -> FrictionPattern:
+    return FrictionPattern(
+        title="Scoring visibility",
+        signal_type="scoring_opacity",
+        severity_range="medium → high",
+        personas_affected=["senior-gtm-eng-nyc"],
+        description="Score chip has no reason.",
+        proposed_fix="Add reason chip.",
+        implementation_approach="PipelineTable.tsx",
+        estimated_effort="S",
+    )
+
+
+def test_reprompt_triggers_when_prose_only_and_recovers(tmp_path):
+    """When the first call returns 0 patterns but a group-rich summary,
+    the synthesizer should make a second call and use its patterns."""
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    (reports_dir / "alpha-20260517T080000Z.json").write_text(
+        json.dumps(_make_report("alpha", signal_types=["scoring_opacity"]))
+    )
+
+    # First call: prose-only (0 patterns, group-rich summary).
+    # Second call: structured patterns recovered.
+    first_response = PolishSpec(
+        overall_summary=_prose_only_summary(),
+        patterns=[],
+    )
+    second_response = PolishSpec(
+        overall_summary="Recovered.",
+        patterns=[_recovered_pattern()],
+    )
+    fake = _FakeMessagesSequence([first_response, second_response])
+
+    s = Synthesizer(
+        app_config=_app_config(),
+        reports_dir=reports_dir,
+        synthesis_dir=tmp_path / "synth",
+        client=_FakeClient(fake),
+    )
+    result = s.synthesize()
+
+    # Two API calls made.
+    assert len(fake.calls) == 2
+    # Second call's user message references the summary.
+    assert "scoring visibility" in fake.calls[1]["messages"][0]["content"].lower()
+    # Result uses recovered patterns + original summary.
+    assert result["pattern_count"] == 1
+    assert result["reprompted"] is True
+    # Markdown file documents the re-prompt.
+    md = Path(result["spec_md"]).read_text()
+    assert "re-prompt fallback" in md
+    # Original summary preserved (not replaced by second call's summary).
+    assert "three pattern clusters" in md
+
+
+def test_reprompt_double_failure_proceeds_with_empty(tmp_path):
+    """When both calls return 0 patterns, the synthesizer should not crash
+    and should write a valid (empty) spec."""
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    (reports_dir / "alpha-20260517T080000Z.json").write_text(
+        json.dumps(_make_report("alpha", signal_types=["navigation"]))
+    )
+
+    first_response = PolishSpec(
+        overall_summary=_prose_only_summary(),
+        patterns=[],
+    )
+    second_response = PolishSpec(
+        overall_summary="Still nothing.",
+        patterns=[],
+    )
+    fake = _FakeMessagesSequence([first_response, second_response])
+
+    s = Synthesizer(
+        app_config=_app_config(),
+        reports_dir=reports_dir,
+        synthesis_dir=tmp_path / "synth",
+        client=_FakeClient(fake),
+    )
+    result = s.synthesize()
+
+    assert len(fake.calls) == 2
+    assert result["pattern_count"] == 0
+    assert result["reprompted"] is False  # didn't successfully recover
+    # Still writes valid output files.
+    assert Path(result["spec_md"]).exists()
+    assert Path(result["spec_json"]).exists()
+
+
+def test_reprompt_not_triggered_for_non_group_empty_spec(tmp_path):
+    """When 0 patterns AND the summary doesn't reference groups,
+    no re-prompt should happen (legitimately empty result)."""
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    (reports_dir / "alpha-20260517T080000Z.json").write_text(
+        json.dumps(_make_report("alpha", signal_types=["navigation"]))
+    )
+
+    spec = PolishSpec(
+        overall_summary="No significant friction found across personas.",
+        patterns=[],
+    )
+    fake = _FakeMessages(parsed_output=spec)
+
+    s = Synthesizer(
+        app_config=_app_config(),
+        reports_dir=reports_dir,
+        synthesis_dir=tmp_path / "synth",
+        client=_FakeClient(fake),
+    )
+    result = s.synthesize()
+
+    # Only one call — no re-prompt.
+    assert len(fake.calls) == 1
+    assert result["pattern_count"] == 0
+    assert result["reprompted"] is False
+
+
+def test_reprompt_api_exception_does_not_crash(tmp_path):
+    """If the re-prompt call raises, the synthesizer should log and
+    continue with the empty spec rather than crashing."""
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    (reports_dir / "alpha-20260517T080000Z.json").write_text(
+        json.dumps(_make_report("alpha", signal_types=["navigation"]))
+    )
+
+    class _ExplodingMessages:
+        def __init__(self):
+            self.calls: list[dict] = []
+            self._call_count = 0
+        def parse(self, **kwargs):
+            self.calls.append(kwargs)
+            self._call_count += 1
+            if self._call_count == 1:
+                # First call succeeds with prose-only.
+                return _FakeResponse(
+                    PolishSpec(overall_summary=_prose_only_summary(), patterns=[]),
+                    _FakeUsage(),
+                )
+            # Second call explodes.
+            raise RuntimeError("API connection lost")
+
+    fake = _ExplodingMessages()
+    s = Synthesizer(
+        app_config=_app_config(),
+        reports_dir=reports_dir,
+        synthesis_dir=tmp_path / "synth",
+        client=_FakeClient(fake),
+    )
+    result = s.synthesize()
+
+    assert len(fake.calls) == 2
+    assert result["pattern_count"] == 0
+    assert result["reprompted"] is False
