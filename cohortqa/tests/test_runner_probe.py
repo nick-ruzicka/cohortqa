@@ -98,3 +98,87 @@ def test_qa_app_yaml_declares_instrumentation_gap():
     cfg = load_app_config(repo_root / "qa" / "app.yaml")
     types = {s["type"] for s in cfg["friction_signals"]}
     assert "instrumentation_gap" in types
+
+
+# ─── Hydration wait (Phase B #2) ─────────────────────────────────────────────
+
+class _FakeHydrationPage:
+    """Minimal page mock for _wait_for_hydration. Drives a programmable
+    body-length series across reads — one entry consumed per evaluate()
+    call, last value sticks once the list is exhausted."""
+
+    def __init__(self, body_len_series: list[int]):
+        self._series = list(body_len_series)
+        self._evaluate_calls = 0
+        self._wait_calls = 0
+
+    async def evaluate(self, _expr: str) -> int:
+        self._evaluate_calls += 1
+        if not self._series:
+            return 0
+        if len(self._series) == 1:
+            return self._series[0]
+        return self._series.pop(0)
+
+    async def wait_for_timeout(self, _ms: int) -> None:
+        self._wait_calls += 1
+
+
+def test_wait_for_hydration_returns_true_when_body_stabilises_large():
+    """Two reads in a row at the same length >= 200 chars → settled."""
+    from personalab.core.runner import _wait_for_hydration
+
+    page = _FakeHydrationPage([0, 50, 2500, 2500])
+    settled = asyncio.run(_wait_for_hydration(page))
+    assert settled is True
+    # Should have stopped after the stabilised read, not exhausted the cap.
+    assert page._wait_calls < 15
+
+
+def test_wait_for_hydration_returns_true_for_small_but_stable_body():
+    """A genuinely short page (e.g. dense /context after improvement)
+    shouldn't burn the full 3s waiting for it to grow — once it's stable
+    at a small non-zero size, we're done."""
+    from personalab.core.runner import _wait_for_hydration
+
+    page = _FakeHydrationPage([0, 40, 40])
+    settled = asyncio.run(_wait_for_hydration(page))
+    assert settled is True
+
+
+def test_wait_for_hydration_returns_false_at_cap_with_zero_body(monkeypatch):
+    """If body never paints at all (status=200 but JS never ran), we
+    eventually bail and let the analyzer treat that as a low-confidence
+    instrumentation_gap signal.
+
+    Fake-clock the wall time so the test doesn't burn the real 3s cap."""
+    from personalab.core import runner
+
+    # Each call advances 100ms of fake wall time; ensures the loop hits
+    # the 3000ms cap quickly without taking real time.
+    fake_now = [0.0]
+    def _now():
+        fake_now[0] += 0.1  # 100ms per call
+        return fake_now[0]
+    monkeypatch.setattr(runner.time, "monotonic", _now)
+
+    # All-zero series — never stabilises above 0, never settles.
+    page = _FakeHydrationPage([0])
+    settled = asyncio.run(runner._wait_for_hydration(page))
+    assert settled is False
+
+
+def test_wait_for_hydration_survives_evaluate_exceptions():
+    """If the page navigates away during the wait and evaluate() raises,
+    we should return False rather than crash the runner."""
+    from personalab.core.runner import _wait_for_hydration
+
+    class _CrashPage:
+        async def evaluate(self, _expr: str):
+            raise RuntimeError("page detached")
+
+        async def wait_for_timeout(self, _ms):
+            pass
+
+    settled = asyncio.run(_wait_for_hydration(_CrashPage()))
+    assert settled is False

@@ -237,12 +237,23 @@ class PersonaRunner:
         url = self.dev_server.rstrip("/") + route["path"]
         before = time.monotonic()
         nav_error: str | None = None
+        hydration_settled = False
         try:
             response = await page.goto(url, wait_until="domcontentloaded", timeout=10000)
             status = response.status if response else None
         except Exception as exc:  # noqa: BLE001 — top-level isolation per route
             status = None
             nav_error = repr(exc)
+
+        # Wait for the page to actually paint content before measuring
+        # `body_text_length` and probing selectors. Previously the runner
+        # measured immediately after DOMContentLoaded, which read the
+        # SPA shell — generating false `body=0` / `body=498` signals that
+        # the analyzer then misfiled as empty_state / missing_action.
+        # Render time INCLUDES this wait: "time to usable" matters more
+        # to the persona than "time to shell."
+        if nav_error is None:
+            hydration_settled = await _wait_for_hydration(page)
 
         render_ms = int((time.monotonic() - before) * 1000)
 
@@ -255,6 +266,7 @@ class PersonaRunner:
             "body_text_length": 0,
             "visible_action_names": [],
             "selector_probe": [],
+            "hydration_settled": hydration_settled,
             "console_errors": list(self.console_errors),
             "nav_error": nav_error,
         }
@@ -552,6 +564,55 @@ def _matches_path_pattern(actual_path: str, pattern: str) -> bool:
         elif a != p:
             return False
     return True
+
+
+# Hydration wait defaults. Reasonable for a Next.js SPA dev server; the
+# `min_body_chars` floor ignores tiny-body cases (e.g. /context which has
+# real but compact content) by also returning once body length stabilises
+# across two consecutive reads regardless of size. Made constants (not
+# config) to keep #2 minimal — backlog #8 will expose route-level overrides.
+HYDRATION_MAX_MS = 3000
+HYDRATION_SAMPLE_INTERVAL_MS = 200
+HYDRATION_MIN_BODY_CHARS = 200
+
+
+async def _wait_for_hydration(page: Any) -> bool:
+    """Block until the page's body text stabilises or a wall-clock cap.
+
+    Returns True if hydration is judged settled (body length stable across
+    two reads), False if we bailed at the cap. Pure observer — never
+    interacts with the page beyond reading ``document.body.innerText``.
+
+    The previous runner read body / probed selectors immediately after
+    ``domcontentloaded``, which gave false zero-body and zero-affordance
+    measurements on SPA routes whose data renders after first paint. This
+    helper waits for the actual content to land.
+    """
+    start = time.monotonic()
+    last_len = -1
+    while True:
+        try:
+            body_len = await page.evaluate("() => (document.body && document.body.innerText || '').length")
+        except Exception:  # noqa: BLE001
+            # Page may have navigated away or detached during the wait.
+            # Defer the diagnostic to the capture path's own error handling.
+            return False
+
+        # Stabilised at a non-trivial size: declare hydration done.
+        if body_len >= HYDRATION_MIN_BODY_CHARS and body_len == last_len:
+            return True
+        # Stabilised at a small size: probably a genuinely short page
+        # (e.g. /context after improvements). Two reads in a row at the
+        # same length is enough signal to stop waiting — we'd just be
+        # adding latency otherwise.
+        if body_len > 0 and body_len == last_len:
+            return True
+
+        last_len = body_len
+        elapsed_ms = (time.monotonic() - start) * 1000
+        if elapsed_ms + HYDRATION_SAMPLE_INTERVAL_MS > HYDRATION_MAX_MS:
+            return False
+        await page.wait_for_timeout(HYDRATION_SAMPLE_INTERVAL_MS)
 
 
 async def _probe_route_actions(

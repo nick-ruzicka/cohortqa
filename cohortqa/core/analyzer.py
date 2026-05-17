@@ -178,11 +178,13 @@ def _build_friction_taxonomy(app_config: dict[str, Any]) -> str:
         "- The runner logs 'no matching affordance' reasoning events when the "
         "  persona wanted an action the page didn't expose. Before filing as "
         "  `missing_action`, check the surrounding nav event for the route: "
-        "  if `body_text_length` is 0 or implausibly small, or if "
-        "  `selector_eval_errors` is present, the affordance may exist but "
-        "  the runner couldn't see it — file as `instrumentation_gap` with "
-        "  `confidence=low` instead. A truly missing affordance has a "
-        "  populated body and clean capture.",
+        "  if `hydration_settled` is false, or `body_text_length` is 0 or "
+        "  implausibly small, or any entry in `selector_probe` has a "
+        "  populated `eval_error`, the affordance may exist but the runner "
+        "  couldn't see it — file as `instrumentation_gap` with "
+        "  `confidence=low` instead. A truly missing affordance has "
+        "  `hydration_settled=true`, a populated body, and all selector "
+        "  probes returning matched_count=0 with eval_error=null.",
         "- The runner logs 'intent logged, click suppressed' when an action "
         "  would have mutated protected files; treat the *attempted intent* "
         "  (e.g. 'persona wanted to mark role evaluated') as signal, not the "
@@ -254,6 +256,7 @@ def _build_user_message(events: list[dict[str, Any]]) -> str:
                 "body_text_length": ps.get("body_text_length"),
                 "visible_action_names": ps.get("visible_action_names"),
                 "selector_probe": ps.get("selector_probe"),
+                "hydration_settled": ps.get("hydration_settled"),
                 "console_errors": ps.get("console_errors"),
                 "nav_error": ps.get("nav_error"),
                 "capture_error": ps.get("capture_error"),
