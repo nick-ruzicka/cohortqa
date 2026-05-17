@@ -189,6 +189,18 @@ def _build_friction_taxonomy(app_config: dict[str, Any]) -> str:
         "  would have mutated protected files; treat the *attempted intent* "
         "  (e.g. 'persona wanted to mark role evaluated') as signal, not the "
         "  suppression itself.",
+        "- Error events carry a structured `error_type` in their page_state: "
+        "  timeout, not_found, not_visible, blocked_by_overlay, detached, "
+        "  other. Tier severity accordingly — a `timeout` on a slow page is "
+        "  a different finding from `not_found` (stale selector / missing "
+        "  affordance) on a fast page, even though both surface as action "
+        "  errors. `not_visible` and `blocked_by_overlay` usually mean the "
+        "  affordance exists but is unreachable in this state — not "
+        "  missing_action friction, more like a UI defect.",
+        "- console_errors are now route-attributed: each entry is "
+        "  {type, text, route} and the `route` field tells you which path "
+        "  was active when it fired. Attribute findings to that route, not "
+        "  to whichever route happened to capture the snapshot.",
         "- Confidence calibration:",
         "  * high: multiple session events agree, or a clear timeout/error.",
         "  * medium: one observation, but corroborated by page_state fields.",
@@ -240,6 +252,7 @@ def _build_user_message(events: list[dict[str, Any]]) -> str:
             "event_type": ev.get("event_type"),
             "route": ev.get("route"),
             "action": ev.get("action"),
+            "selector": ev.get("selector"),
             "reasoning": ev.get("reasoning"),
             "render_time_ms": ev.get("render_time_ms"),
         }
@@ -249,6 +262,8 @@ def _build_user_message(events: list[dict[str, Any]]) -> str:
             # signal the analyzer needs to distinguish "no affordance" from
             # "stale selector" from "page didn't hydrate." Without this the
             # taxonomy collapses three distinct conditions into missing_action.
+            # error_type / exception_repr on error events let the model tier
+            # severity by failure mode (timeout != not_found != blocked_by_overlay).
             e["page_state"] = {
                 "url": ps.get("url"),
                 "status": ps.get("status"),
@@ -261,6 +276,8 @@ def _build_user_message(events: list[dict[str, Any]]) -> str:
                 "nav_error": ps.get("nav_error"),
                 "capture_error": ps.get("capture_error"),
                 "entered_via": ps.get("entered_via"),
+                "error_type": ps.get("error_type"),
+                "exception_repr": ps.get("exception_repr"),
             }
         # Drop keys whose value is None to keep the payload compact.
         trimmed.append({k: v for k, v in e.items() if v is not None})

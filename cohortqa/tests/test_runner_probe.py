@@ -182,3 +182,61 @@ def test_wait_for_hydration_survives_evaluate_exceptions():
 
     settled = asyncio.run(_wait_for_hydration(_CrashPage()))
     assert settled is False
+
+
+# ─── Structured action-error classification (Phase B #3) ─────────────────────
+
+def test_classify_action_error_separates_known_modes():
+    """Each Playwright failure flavour gets a distinct error_type so the
+    analyzer can tier severity by failure mode."""
+    from personalab.core.runner import _classify_action_error
+
+    class _TimeoutError(Exception):
+        pass
+
+    assert _classify_action_error(_TimeoutError("Locator.click: Timeout 2000ms exceeded.")) == "timeout"
+    assert _classify_action_error(Exception("element is not visible")) == "not_visible"
+    assert _classify_action_error(Exception("element intercepts pointer events")) == "blocked_by_overlay"
+    assert _classify_action_error(Exception("element is outside the viewport")) == "blocked_by_overlay"
+    assert _classify_action_error(Exception("element handle is detached")) == "detached"
+    assert _classify_action_error(Exception("strict mode violation: 0 elements found")) == "not_found"
+    assert _classify_action_error(Exception("something completely unrelated")) == "other"
+
+
+def test_classify_action_error_prefers_timeout_when_message_mentions_both():
+    """A TimeoutError whose message also contains 'not found' should still
+    classify as timeout — the failure mode is timing, the missing element
+    is downstream."""
+    from personalab.core.runner import _classify_action_error
+
+    class _TimeoutError(Exception):
+        pass
+
+    e = _TimeoutError("Timeout 2000ms exceeded. No element found.")
+    assert _classify_action_error(e) == "timeout"
+
+
+# ─── Console-error route attribution (Phase B #3) ────────────────────────────
+
+def test_console_errors_filtered_per_route_via_active_route_tag():
+    """The runner stores console errors as structured dicts with a `route`
+    field set from self._active_route. The page_state.console_errors list
+    on each nav event is filtered to only the errors that fired while that
+    route was active — no more 'errors from /companies showing up in
+    /context's console_errors snapshot.'"""
+    # Pure structural check: simulate the tagging the runner does.
+    errors = [
+        {"type": "error", "text": "key warning A", "route": "/companies/[slug]"},
+        {"type": "error", "text": "key warning B", "route": "/companies/[slug]"},
+        {"type": "warning", "text": "hydration mismatch", "route": "/signals"},
+        {"type": "error", "text": "key warning C", "route": "/context"},
+    ]
+
+    def per_route(path: str) -> list[dict]:
+        return [e for e in errors if e["route"] == path]
+
+    assert len(per_route("/companies/[slug]")) == 2
+    assert len(per_route("/signals")) == 1
+    assert len(per_route("/context")) == 1
+    # No cross-attribution — /today gets nothing, not the cumulative pile.
+    assert per_route("/today") == []

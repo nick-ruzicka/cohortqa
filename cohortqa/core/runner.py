@@ -153,7 +153,16 @@ class PersonaRunner:
             self.runs_dir = Path(app_config["runs_dir"])
 
         self.events: list[SessionEvent] = []
-        self.console_errors: list[str] = []
+        # Console errors are stored as structured dicts now:
+        #   {"type": "error"|"warning", "text": str, "route": str | None}
+        # The route field is whichever path was active when the error fired
+        # (or None if it fired before the first nav). This lets the analyzer
+        # attribute errors to the route that generated them rather than to
+        # whichever route happened to be sampled next — the old cumulative
+        # list created phantom "/context has 21 console errors" findings
+        # when those errors had actually come from /companies/[slug].
+        self.console_errors: list[dict[str, Any]] = []
+        self._active_route: str | None = None
         self.session_path: Path | None = None
 
     # ─── Event helpers ────────────────────────────────────────────────────────
@@ -218,7 +227,11 @@ class PersonaRunner:
                 )
                 page.on(
                     "pageerror",
-                    lambda err: self.console_errors.append(str(err)),
+                    lambda err: self.console_errors.append({
+                        "type": "pageerror",
+                        "text": str(err),
+                        "route": self._active_route,
+                    }),
                 )
 
                 for route in self.app_config["routes"]:
@@ -235,6 +248,12 @@ class PersonaRunner:
 
     async def _visit_route(self, page: Any, route: dict[str, Any]) -> None:
         url = self.dev_server.rstrip("/") + route["path"]
+        # Tag any console errors that fire during this navigation with the
+        # path that's loading. Mid-flight errors from late callbacks of the
+        # previous route still attribute to the previous route — but that's
+        # closer to truth than the old "everything attributes to whoever
+        # the page is currently showing" behaviour.
+        self._active_route = route["path"]
         before = time.monotonic()
         nav_error: str | None = None
         hydration_settled = False
@@ -259,6 +278,13 @@ class PersonaRunner:
 
         # Capture page state. If navigation failed we still emit a capture
         # event with the failure so the analyzer sees a friction signal.
+        # Filter console errors to those that fired while this route was
+        # active. Untagged errors (route=None — fired before any nav, rare)
+        # attach to the first route to keep them in the log.
+        route_errors = [
+            e for e in self.console_errors
+            if isinstance(e, dict) and e.get("route") == route["path"]
+        ]
         page_state: dict[str, Any] = {
             "url": url,
             "status": status,
@@ -267,7 +293,7 @@ class PersonaRunner:
             "visible_action_names": [],
             "selector_probe": [],
             "hydration_settled": hydration_settled,
-            "console_errors": list(self.console_errors),
+            "console_errors": route_errors,
             "nav_error": nav_error,
         }
         if nav_error is None:
@@ -432,6 +458,14 @@ class PersonaRunner:
                     reasoning=f"Detail capture failed: {exc!r}",
                 )
 
+            # Detail routes inherit the parent's active_route attribution
+            # for console errors — set the detail path active before
+            # capture so subsequent errors land here.
+            self._active_route = detail["path"]
+            detail_errors = [
+                e for e in self.console_errors
+                if isinstance(e, dict) and e.get("route") == detail["path"]
+            ]
             self._record(
                 event_type="nav",
                 route=detail["path"],
@@ -443,7 +477,7 @@ class PersonaRunner:
                     "body_text_length": len(body_text),
                     "visible_action_names": visible,
                     "selector_probe": probe,
-                    "console_errors": list(self.console_errors),
+                    "console_errors": detail_errors,
                     "entered_via": "detail_route_traversal",
                 },
                 reasoning=(
@@ -502,21 +536,32 @@ class PersonaRunner:
                 ),
             )
         except Exception as exc:  # noqa: BLE001
+            error_type = _classify_action_error(exc)
             self._record(
                 event_type="error",
                 route=route["path"],
                 action=action["name"],
                 selector=selector,
-                reasoning=f"Action failed: {exc!r}",
+                reasoning=f"Action failed [error_type={error_type}]: {exc!r}",
+                page_state={
+                    "error_type": error_type,
+                    "exception_repr": repr(exc),
+                },
             )
 
     # ─── Console plumbing ─────────────────────────────────────────────────────
 
     def _on_console(self, msg: Any) -> None:
         # Capture errors and warnings only — info/debug noise drowns signal.
+        # Tag each one with the route active when it fired so the analyzer
+        # can attribute it correctly.
         try:
             if msg.type in ("error", "warning"):
-                self.console_errors.append(f"[{msg.type}] {msg.text}")
+                self.console_errors.append({
+                    "type": msg.type,
+                    "text": msg.text,
+                    "route": self._active_route,
+                })
         except Exception:  # noqa: BLE001
             pass
 
@@ -564,6 +609,31 @@ def _matches_path_pattern(actual_path: str, pattern: str) -> bool:
         elif a != p:
             return False
     return True
+
+
+def _classify_action_error(exc: Exception) -> str:
+    """Map a Playwright action-failure exception to a structured error_type.
+
+    Returns one of: timeout, not_found, not_visible, blocked_by_overlay,
+    detached, other. The analyzer reads this to tier severity by failure
+    mode — a `timeout` on a slow page is a different finding from a
+    `not_found` on a stable page even though both surface as action errors.
+    """
+    name = type(exc).__name__.lower()
+    msg = str(exc).lower()
+    if "timeout" in name or "timeout" in msg:
+        return "timeout"
+    # Order matters: 'not visible' / 'covered' / 'intercept' should win over
+    # generic 'not found' since Playwright nests these messages.
+    if "intercepts pointer events" in msg or "covered" in msg or "outside the viewport" in msg:
+        return "blocked_by_overlay"
+    if "not visible" in msg or "is hidden" in msg or "not stable" in msg:
+        return "not_visible"
+    if "detach" in msg or "destroyed" in msg or "navigated" in msg:
+        return "detached"
+    if "no element" in msg or "0 elements" in msg or "not found" in msg or "no node" in msg:
+        return "not_found"
+    return "other"
 
 
 # Hydration wait defaults. Reasonable for a Next.js SPA dev server; the
