@@ -363,6 +363,12 @@ class Synthesizer:
                 f"Expected PolishSpec, got {type(spec).__name__}"
             )
 
+        # Defense-in-depth: auto-demote patterns whose underlying per-persona
+        # findings are predominantly low-confidence. The LLM is asked to do
+        # this in the prompt, but mechanical enforcement protects us from
+        # the C6-style "6/6 personas, must be real" hallucination.
+        spec = demote_low_confidence_patterns(spec, reports)
+
         self.synthesis_dir.mkdir(parents=True, exist_ok=True)
         slug = _date_slug()
         md_path = self.synthesis_dir / f"polish-spec-draft-{slug}.md"
@@ -387,6 +393,58 @@ class Synthesizer:
         }
 
 
+# ─── Single-root-cause detector (Phase B #5) ─────────────────────────────────
+
+def demote_low_confidence_patterns(
+    spec: PolishSpec,
+    reports: list[dict[str, Any]],
+) -> PolishSpec:
+    """Auto-demote a pattern's ``confidence`` to 'low' when the underlying
+    per-persona friction_events are predominantly low-confidence, or when
+    the pattern's signal_type is ``instrumentation_gap`` (always advisory
+    by definition).
+
+    Rules, in order:
+
+    1. ``signal_type == "instrumentation_gap"`` → confidence='low'. The
+       taxonomy slot exists *because* the measurement is uncertain.
+    2. A majority of contributing per-persona findings carry
+       ``confidence='low'`` → confidence='low'. The pattern is one root
+       cause counted N times, not N independent confirmations.
+    3. Otherwise leave the LLM's setting in place.
+
+    Matching contributing findings: per-persona events whose ``signal_type``
+    equals the pattern's. Location-substring matching is intentionally not
+    enforced — the LLM may aggregate two finely-located events ('/context'
+    and '/context → archetype weights') under one coarser pattern, and a
+    strict location match would miss them. Signal_type is the dedup key
+    PersonaLab already uses elsewhere (dashboard FrictionPatternView).
+    """
+    by_persona = {r["persona_id"]: r.get("report", {}) for r in reports}
+    for p in spec.patterns:
+        # Rule 1
+        if (p.signal_type or "").lower() == "instrumentation_gap":
+            p.confidence = "low"
+            continue
+        # Rule 2
+        contributing: list[dict[str, Any]] = []
+        for persona_id in p.personas_affected:
+            report = by_persona.get(persona_id, {})
+            for ev in report.get("friction_events", []) or []:
+                if (ev.get("signal_type") or "") == p.signal_type:
+                    contributing.append(ev)
+        if not contributing:
+            continue
+        low_count = sum(
+            1 for ev in contributing
+            if (ev.get("confidence") or "high").lower() == "low"
+        )
+        # Majority — strict majority (more than half) demotes.
+        if low_count * 2 > len(contributing):
+            p.confidence = "low"
+    return spec
+
+
 # ─── Utility ──────────────────────────────────────────────────────────────────
 
 def _iso_now() -> str:
@@ -403,6 +461,7 @@ __all__ = [
     "PolishSpec",
     "Synthesizer",
     "SynthesizerConfig",
+    "demote_low_confidence_patterns",
     "find_latest_reports_per_persona",
     "render_polish_spec",
 ]

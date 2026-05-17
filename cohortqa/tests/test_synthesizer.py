@@ -359,6 +359,159 @@ def test_render_polish_spec_tags_low_confidence_patterns():
     assert "⚠️" not in real_header
 
 
+# ─── Single-root-cause detector (Phase B #5) ─────────────────────────────────
+
+def test_demote_forces_low_for_instrumentation_gap_patterns():
+    """Rule 1: instrumentation_gap is by definition advisory. Any pattern
+    of that type gets confidence=low regardless of what the LLM said."""
+    from personalab.core.synthesizer import demote_low_confidence_patterns
+
+    spec = PolishSpec(
+        overall_summary=".",
+        patterns=[
+            FrictionPattern(
+                title="Maybe /context is broken",
+                signal_type="instrumentation_gap",
+                severity_range="high",
+                personas_affected=["a", "b", "c"],
+                description=".",
+                proposed_fix=".",
+                implementation_approach=".",
+                estimated_effort="S",
+                confidence="high",  # the LLM said high; we override
+            ),
+        ],
+    )
+    demoted = demote_low_confidence_patterns(spec, reports=[])
+    assert demoted.patterns[0].confidence == "low"
+
+
+def test_demote_demotes_when_majority_of_findings_are_low_confidence():
+    """Rule 2: if more than half of the per-persona friction_events that
+    contribute to a pattern (matched on signal_type) carry confidence=low,
+    the pattern itself is demoted."""
+    from personalab.core.synthesizer import demote_low_confidence_patterns
+
+    spec = PolishSpec(
+        overall_summary=".",
+        patterns=[
+            FrictionPattern(
+                title="Dead /context",
+                signal_type="empty_state",
+                severity_range="high",
+                personas_affected=["alpha", "beta", "gamma"],
+                description=".",
+                proposed_fix=".",
+                implementation_approach=".",
+                estimated_effort="M",
+                confidence="high",
+            ),
+        ],
+    )
+    reports = [
+        {"persona_id": "alpha", "report": {"friction_events": [
+            {"signal_type": "empty_state", "confidence": "low"},
+        ]}},
+        {"persona_id": "beta", "report": {"friction_events": [
+            {"signal_type": "empty_state", "confidence": "low"},
+        ]}},
+        {"persona_id": "gamma", "report": {"friction_events": [
+            {"signal_type": "empty_state", "confidence": "high"},
+        ]}},
+    ]
+    demoted = demote_low_confidence_patterns(spec, reports)
+    # 2 of 3 contributing events are low → majority → demote.
+    assert demoted.patterns[0].confidence == "low"
+
+
+def test_demote_leaves_high_confidence_alone_when_findings_are_high():
+    """Negative case: when contributing findings are mostly high-confidence,
+    don't touch the LLM's setting."""
+    from personalab.core.synthesizer import demote_low_confidence_patterns
+
+    spec = PolishSpec(
+        overall_summary=".",
+        patterns=[
+            FrictionPattern(
+                title="Real timeout",
+                signal_type="slow_load",
+                severity_range="high",
+                personas_affected=["alpha", "beta"],
+                description=".",
+                proposed_fix=".",
+                implementation_approach=".",
+                estimated_effort="L",
+                confidence="high",
+            ),
+        ],
+    )
+    reports = [
+        {"persona_id": "alpha", "report": {"friction_events": [
+            {"signal_type": "slow_load", "confidence": "high"},
+        ]}},
+        {"persona_id": "beta", "report": {"friction_events": [
+            {"signal_type": "slow_load", "confidence": "high"},
+        ]}},
+    ]
+    demoted = demote_low_confidence_patterns(spec, reports)
+    assert demoted.patterns[0].confidence == "high"
+
+
+def test_demote_handles_findings_without_explicit_confidence_field():
+    """Backward compat: old reports stored before the confidence field
+    existed default to 'high' (per FrictionEvent's default). The demoter
+    must treat absence-of-confidence as 'high', not as low."""
+    from personalab.core.synthesizer import demote_low_confidence_patterns
+
+    spec = PolishSpec(
+        overall_summary=".",
+        patterns=[
+            FrictionPattern(
+                title="x", signal_type="navigation", severity_range="medium",
+                personas_affected=["alpha"], description=".",
+                proposed_fix=".", implementation_approach=".",
+                estimated_effort="S", confidence="high",
+            ),
+        ],
+    )
+    reports = [
+        {"persona_id": "alpha", "report": {"friction_events": [
+            # No 'confidence' key at all — old format.
+            {"signal_type": "navigation"},
+        ]}},
+    ]
+    demoted = demote_low_confidence_patterns(spec, reports)
+    assert demoted.patterns[0].confidence == "high"
+
+
+def test_demote_ignores_patterns_with_no_matching_contributing_events():
+    """Edge case: if a pattern's personas_affected list refers to personas
+    whose reports don't contain any matching signal_type events (e.g.,
+    LLM aggregated under a different label), the demoter must not crash
+    and must not change anything."""
+    from personalab.core.synthesizer import demote_low_confidence_patterns
+
+    spec = PolishSpec(
+        overall_summary=".",
+        patterns=[
+            FrictionPattern(
+                title="x", signal_type="data_density", severity_range="medium",
+                personas_affected=["alpha"], description=".",
+                proposed_fix=".", implementation_approach=".",
+                estimated_effort="M", confidence="medium",
+            ),
+        ],
+    )
+    # alpha's report has no data_density events at all.
+    reports = [
+        {"persona_id": "alpha", "report": {"friction_events": [
+            {"signal_type": "scoring_opacity", "confidence": "high"},
+        ]}},
+    ]
+    demoted = demote_low_confidence_patterns(spec, reports)
+    assert demoted.patterns[0].confidence == "medium"  # untouched
+
+
 def test_synth_system_prompt_instructs_on_confidence():
     """The prompt must teach the model about the confidence-low rule for
     instrumentation_gap and single-shared-signal patterns. Otherwise the
