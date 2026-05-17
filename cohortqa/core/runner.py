@@ -48,6 +48,7 @@ from .behavior import (
     archetype_engagement,
     click_delay_ms,
     detail_dwell_ms,
+    is_protected_action,
 )
 
 
@@ -288,6 +289,12 @@ class PersonaRunner:
 
         await self._take_route_actions(page, route, page_state["visible_action_names"])
 
+        # Walk into detail routes the parent declared (e.g. /companies/[slug]
+        # under /companies) when a prior action navigated the persona there.
+        # Detail traversal is one level deep — nested detail-of-detail is out
+        # of scope for the first runner pass.
+        await self._maybe_walk_detail_routes(page, route)
+
     async def _take_route_actions(
         self,
         page: Any,
@@ -313,6 +320,24 @@ class PersonaRunner:
 
         for action_name in actually_take:
             action_spec = _action_by_name(self.app_config["actions"], action_name)
+
+            # Protected actions: log intent, never click. PersonaLab must
+            # not mutate applications.md or other user-owned files even if
+            # the page exposes the button. See behavior.is_protected_action.
+            if is_protected_action(action_spec):
+                self._record(
+                    event_type="reasoning",
+                    route=route["path"],
+                    action=action_name,
+                    selector=action_spec.get("selector"),
+                    reasoning=(
+                        f"Persona would have taken {action_name!r} but the action's "
+                        f"side_effects {action_spec.get('side_effects')!r} include a "
+                        "protected write; intent logged, click suppressed."
+                    ),
+                )
+                continue
+
             await self._take_action(page, route, action_spec)
             await page.wait_for_timeout(click_delay_ms(self.persona))
 
@@ -332,6 +357,72 @@ class PersonaRunner:
                         reasoning=f"Persona dwells {dwell}ms reading detail.",
                     )
                     await page.wait_for_timeout(min(dwell, 1500))
+
+    # ─── Detail-route traversal ───────────────────────────────────────────────
+
+    async def _maybe_walk_detail_routes(
+        self,
+        page: Any,
+        parent_route: dict[str, Any],
+    ) -> None:
+        """If the parent route declares ``detail_routes`` and a prior action
+        landed us on a matching URL, exercise the detail route's actions
+        in place. Records the entry with an ``event_type='nav'`` event so
+        the analyzer sees /companies/[slug] as a visited surface.
+        """
+        detail_routes = parent_route.get("detail_routes") or []
+        if not detail_routes:
+            return
+
+        current_url = page.url
+        # Strip dev_server prefix; compare path against detail_route patterns.
+        from urllib.parse import urlparse
+        current_path = urlparse(current_url).path or "/"
+
+        for detail in detail_routes:
+            if not _matches_path_pattern(current_path, detail["path"]):
+                continue
+
+            # Capture page state for the detail route — the persona is
+            # already here, so render_time is 0 (the parent action's click
+            # is what brought them here, and its dwell already happened).
+            try:
+                title = await page.title()
+                body_text = await page.evaluate("() => document.body.innerText || ''")
+                visible = await _visible_action_names(
+                    page, detail.get("actions", []), self.app_config["actions"]
+                )
+            except Exception as exc:  # noqa: BLE001
+                title, body_text, visible = "", "", []
+                self._record(
+                    event_type="error",
+                    route=detail["path"],
+                    reasoning=f"Detail capture failed: {exc!r}",
+                )
+
+            self._record(
+                event_type="nav",
+                route=detail["path"],
+                render_time_ms=0,  # entered via prior action
+                page_state={
+                    "url": current_url,
+                    "status": 200,  # we got here, so the parent action succeeded
+                    "title": title,
+                    "body_text_length": len(body_text),
+                    "visible_action_names": visible,
+                    "console_errors": list(self.console_errors),
+                    "entered_via": "detail_route_traversal",
+                },
+                reasoning=(
+                    f"Entered detail route {detail['path']} after prior "
+                    f"action navigated to {current_path}."
+                ),
+            )
+
+            await self._take_route_actions(page, detail, visible)
+            # First match wins — detail_routes is intended to be an
+            # ordered list of distinct destinations, not multi-match.
+            return
 
     async def _take_action(
         self,
@@ -395,6 +486,29 @@ def _action_by_name(actions: Iterable[dict[str, Any]], name: str) -> dict[str, A
         if a["name"] == name:
             return a
     raise KeyError(f"Action {name!r} not defined in app_config")
+
+
+def _matches_path_pattern(actual_path: str, pattern: str) -> bool:
+    """Match an actual URL path against an app-config path pattern.
+
+    Patterns use ``[name]`` for dynamic segments (matching Next.js
+    convention). ``/companies/[slug]`` matches ``/companies/anthropic``
+    but not ``/companies`` or ``/companies/anthropic/roles``.
+
+    Static patterns require exact match. The pattern must start with ``/``.
+    """
+    actual_parts = [p for p in actual_path.split("/") if p]
+    pattern_parts = [p for p in pattern.split("/") if p]
+    if len(actual_parts) != len(pattern_parts):
+        return False
+    for a, p in zip(actual_parts, pattern_parts):
+        if p.startswith("[") and p.endswith("]"):
+            # Dynamic segment — accept any non-empty value.
+            if not a:
+                return False
+        elif a != p:
+            return False
+    return True
 
 
 async def _visible_action_names(

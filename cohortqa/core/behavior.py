@@ -12,6 +12,35 @@ from __future__ import annotations
 
 from typing import Any
 
+# ─── Protected side-effects ───────────────────────────────────────────────────
+#
+# PersonaLab must not mutate user-owned files. An action whose
+# ``side_effects`` list contains any of these strings is logged as
+# *intent* (so the analyzer sees the persona considered it) but the click
+# is never actually dispatched. The source-tag on events also lets
+# real analytics filter PersonaLab traffic out — this constant is the
+# defence for things that don't read the source tag (e.g. raw file
+# writers).
+#
+# Matching is substring-based on the side-effect entry so an app config
+# like ``writes:applications.md`` or ``writes:data/score-overrides.json``
+# both protect correctly without ceremony.
+PROTECTED_SIDE_EFFECT_PREFIXES: tuple[str, ...] = ("writes:",)
+
+
+def is_protected_action(action: dict[str, Any]) -> bool:
+    """Whether the runner should skip *executing* this action.
+
+    Returns True when any declared side-effect would mutate a protected
+    file (anything prefixed ``writes:``). The runner still logs the
+    persona's intent so the analyzer can surface "this persona wanted
+    to mark X as evaluated" without actually doing it.
+    """
+    for se in action.get("side_effects") or []:
+        if isinstance(se, str) and se.startswith(PROTECTED_SIDE_EFFECT_PREFIXES):
+            return True
+    return False
+
 # Wall-clock-ish delays between successive actions, by click_speed.
 # These are the inter-action "thinking" pause. Render waits stack on top
 # of these in the runner.
@@ -122,9 +151,11 @@ def archetype_engagement(persona: dict[str, Any]) -> str:
 
 __all__ = [
     "CLICK_DELAY_MS",
+    "PROTECTED_SIDE_EFFECT_PREFIXES",
     "click_delay_ms",
     "detail_dwell_ms",
     "chooses_action",
     "actions_for_route",
     "archetype_engagement",
+    "is_protected_action",
 ]

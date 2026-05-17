@@ -6,11 +6,13 @@ import pytest
 
 from personalab.core.behavior import (
     CLICK_DELAY_MS,
+    PROTECTED_SIDE_EFFECT_PREFIXES,
     actions_for_route,
     archetype_engagement,
     chooses_action,
     click_delay_ms,
     detail_dwell_ms,
+    is_protected_action,
 )
 
 
@@ -153,3 +155,55 @@ def test_click_delay_ms_keys_match_validator_vocabulary():
     to add a delay for it too."""
     from personalab.core.persona_schema import KNOWN_CLICK_SPEEDS
     assert set(CLICK_DELAY_MS.keys()) == KNOWN_CLICK_SPEEDS
+
+
+# ─── is_protected_action ──────────────────────────────────────────────────────
+
+def test_is_protected_action_true_for_writes_applications_md():
+    """An action whose side_effects list includes any ``writes:<file>`` must
+    be flagged so the runner suppresses the click."""
+    action = {
+        "name": "mark_evaluated",
+        "selector": 'button:has-text("Evaluated")',
+        "side_effects": ["emits_event:role.status_changed", "writes:applications.md"],
+    }
+    assert is_protected_action(action) is True
+
+
+def test_is_protected_action_true_for_any_writes_prefix():
+    """Substring matching: any ``writes:`` side-effect protects, regardless
+    of file. Future apps may declare other protected files without
+    PersonaLab needing an explicit whitelist."""
+    action = {"side_effects": ["writes:data/score-overrides.json"]}
+    assert is_protected_action(action) is True
+
+
+def test_is_protected_action_false_when_only_events():
+    """``emits_event:*`` is observable but doesn't mutate user state — the
+    runner is fine to click these."""
+    action = {
+        "name": "run_scan",
+        "side_effects": ["emits_event:scan.started"],
+    }
+    assert is_protected_action(action) is False
+
+
+def test_is_protected_action_false_when_no_side_effects():
+    """A bare action (no side_effects key) is not protected — there's
+    nothing declared that needs guarding."""
+    assert is_protected_action({"name": "filter_signals"}) is False
+    assert is_protected_action({"name": "filter_signals", "side_effects": None}) is False
+    assert is_protected_action({"name": "filter_signals", "side_effects": []}) is False
+
+
+def test_is_protected_action_handles_navigation_side_effects():
+    """``navigates_to:...`` is not a write; runner should click these so
+    detail-route traversal can fire."""
+    action = {"side_effects": ["navigates_to:/companies/[slug]"]}
+    assert is_protected_action(action) is False
+
+
+def test_protected_side_effect_prefixes_includes_writes():
+    """Constant integrity: anyone reading PROTECTED_SIDE_EFFECT_PREFIXES
+    sees ``writes:`` as the canonical protection."""
+    assert "writes:" in PROTECTED_SIDE_EFFECT_PREFIXES

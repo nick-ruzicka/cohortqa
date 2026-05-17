@@ -241,3 +241,195 @@ def test_runner_logs_missing_affordances(tmp_path):
     assert missing_reasons, [
         (e["event_type"], e.get("reasoning")) for e in events
     ]
+
+
+# ─── Protected-action suppression ─────────────────────────────────────────────
+
+def test_runner_logs_intent_but_does_not_click_protected_actions(tmp_path):
+    """``mark_skipped`` declares ``writes:applications.md`` — the runner
+    must record persona intent but never dispatch the click. The
+    distinction matters when PersonaLab points at the real dashboard:
+    a clicked button would mutate user data.
+
+    We assert via the JSONL: a reasoning event with ``action == "mark_skipped"``
+    and "intent logged, click suppressed" wording; and the absence of any
+    ``event_type == "action"`` event for ``mark_skipped``.
+    """
+    import asyncio
+
+    from personalab.core.runner import PersonaRunner, read_session
+
+    async def intercept(context):
+        async def handler(route, request):
+            await route.fulfill(
+                status=200,
+                content_type="text/html",
+                body=SYNTHETIC_PAGES["/pipeline"],
+            )
+        await context.route("**/*", handler)
+
+    cfg = _make_app_config(tmp_path)
+    # Limit to /pipeline so the assertions stay focused on the one route.
+    cfg["routes"] = [cfg["routes"][1]]
+    # Mark mark_skipped as protected (matches the qa/app.yaml convention).
+    for action in cfg["actions"]:
+        if action["name"] == "mark_skipped":
+            action["side_effects"] = [
+                "emits_event:role.status_changed",
+                "writes:applications.md",
+            ]
+
+    runner = PersonaRunner(
+        persona=_persona(),
+        persona_id="smoke",
+        app_config=cfg,
+        headless=True,
+        context_hook=intercept,
+    )
+    asyncio.run(runner.run())
+    events = read_session(runner.session_path)
+
+    actions_clicked = [
+        ev for ev in events
+        if ev["event_type"] == "action" and ev.get("action") == "mark_skipped"
+    ]
+    intent_logs = [
+        ev for ev in events
+        if ev["event_type"] == "reasoning"
+        and ev.get("action") == "mark_skipped"
+        and ev.get("reasoning")
+        and "intent logged" in ev["reasoning"]
+    ]
+
+    assert not actions_clicked, (
+        "mark_skipped was clicked despite writes:applications.md side-effect: "
+        f"{actions_clicked!r}"
+    )
+    assert intent_logs, (
+        "expected a reasoning event recording mark_skipped intent "
+        f"with 'intent logged' wording; got events: "
+        f"{[(e['event_type'], e.get('action')) for e in events]}"
+    )
+
+
+# ─── Detail-route traversal ───────────────────────────────────────────────────
+
+def test_runner_walks_into_detail_route_after_navigation(tmp_path):
+    """When a parent-route action navigates to a path matching a declared
+    ``detail_routes`` entry, the runner exercises the detail route's
+    actions in place. This is what makes C6 (validate /companies/[slug])
+    work — without detail traversal, the company drilldown is never
+    actually visited.
+    """
+    import asyncio
+
+    from personalab.core.runner import PersonaRunner, read_session
+
+    # Two pages: a /companies list with a link to /companies/acme, and the
+    # detail page itself with a Back button.
+    pages = {
+        "/companies": """
+            <!doctype html><html><head><title>Companies</title></head>
+            <body>
+              <h1>Companies</h1>
+              <a href="/companies/acme">Acme</a>
+            </body></html>
+        """,
+        "/companies/acme": """
+            <!doctype html><html><head><title>Acme</title></head>
+            <body>
+              <h1>Acme — Company drilldown</h1>
+              <a href="/companies">Back</a>
+            </body></html>
+        """,
+    }
+
+    async def intercept(context):
+        async def handler(route, request):
+            from urllib.parse import urlparse
+            path = urlparse(request.url).path or "/"
+            body = pages.get(path, "<!doctype html><html><body>?</body></html>")
+            await route.fulfill(status=200, content_type="text/html", body=body)
+        await context.route("**/*", handler)
+
+    cfg = {
+        "app": {
+            "name": "DetailApp",
+            "dev_server": "http://test.local",
+            "description": "Detail route smoke.",
+        },
+        "routes": [
+            {
+                "path": "/companies",
+                "purpose": "Companies list.",
+                "actions": ["open_company_detail"],
+                "expected_load_time_ms": 5000,
+                "detail_routes": [
+                    {
+                        "path": "/companies/[slug]",
+                        "purpose": "Company drilldown.",
+                        "actions": ["back_to_companies"],
+                        "expected_load_time_ms": 5000,
+                    },
+                ],
+            },
+        ],
+        "actions": [
+            {
+                "name": "open_company_detail",
+                "selector": 'a[href^="/companies/"]:not([href="/companies"])',
+                "side_effects": ["navigates_to:/companies/[slug]"],
+            },
+            {
+                "name": "back_to_companies",
+                "selector": 'a[href="/companies"]',
+            },
+        ],
+        "friction_signals": [{"type": "navigation", "description": "Lost."}],
+        "personas_dir": "personas",
+        "scenarios_dir": "scenarios",
+        "runs_dir": str(tmp_path / "runs"),
+    }
+
+    runner = PersonaRunner(
+        persona=_persona(),
+        persona_id="smoke",
+        app_config=cfg,
+        headless=True,
+        context_hook=intercept,
+    )
+    asyncio.run(runner.run())
+
+    events = read_session(runner.session_path)
+    routes_navigated = [ev["route"] for ev in events if ev["event_type"] == "nav"]
+
+    assert "/companies" in routes_navigated, routes_navigated
+    assert "/companies/[slug]" in routes_navigated, (
+        f"detail route not visited; routes seen: {routes_navigated}"
+    )
+
+    # The detail-route nav event records how we got there.
+    detail_nav = next(
+        ev for ev in events
+        if ev["event_type"] == "nav" and ev["route"] == "/companies/[slug]"
+    )
+    assert detail_nav["page_state"]["entered_via"] == "detail_route_traversal", detail_nav
+    assert detail_nav["page_state"]["url"].endswith("/companies/acme"), detail_nav
+
+
+def test_matches_path_pattern_dynamic_segment():
+    """Direct test of the pattern matcher — easier to reason about than
+    only exercising it through the runner."""
+    from personalab.core.runner import _matches_path_pattern
+
+    assert _matches_path_pattern("/companies/anthropic", "/companies/[slug]")
+    assert _matches_path_pattern("/users/42/posts", "/users/[id]/posts")
+    # Wrong arity
+    assert not _matches_path_pattern("/companies", "/companies/[slug]")
+    assert not _matches_path_pattern(
+        "/companies/anthropic/roles", "/companies/[slug]"
+    )
+    # Static segment must match exactly
+    assert not _matches_path_pattern("/orgs/anthropic", "/companies/[slug]")
+    # Empty dynamic segment is rejected
+    assert not _matches_path_pattern("/companies/", "/companies/[slug]")
