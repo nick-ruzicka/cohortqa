@@ -374,6 +374,21 @@ class PersonaRunner:
         if not detail_routes:
             return
 
+        # The parent route's action that navigates here (e.g. open_company_detail)
+        # only awaits the click — Playwright's default ``click`` does not wait
+        # for the resulting navigation to commit. By the time we check
+        # ``page.url`` immediately after, the in-flight nav may not yet have
+        # settled and we'd compare against the parent URL. Found via C6
+        # validation: ``open_company_detail`` fired against the real dashboard
+        # but the detail traversal never triggered because the URL hadn't
+        # changed yet at the read point.
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=3000)
+        except Exception:  # noqa: BLE001
+            # If the wait times out the click may not have triggered a nav at
+            # all — keep going so we still record whatever state we end up in.
+            pass
+
         current_url = page.url
         # Strip dev_server prefix; compare path against detail_route patterns.
         from urllib.parse import urlparse
@@ -431,9 +446,31 @@ class PersonaRunner:
         action: dict[str, Any],
     ) -> None:
         selector = action["selector"]
+        # An action whose side_effects include ``navigates_to:`` is expected
+        # to commit a navigation. Without explicit nav-await, the post-click
+        # ``page.url`` read race-conditions for fast personas (the click
+        # returns before the SPA router has updated history). expect_navigation
+        # explicitly waits for the new commit before returning, so subsequent
+        # _maybe_walk_detail_routes() sees the destination URL.
+        expects_nav = any(
+            (se or "").startswith("navigates_to:")
+            for se in (action.get("side_effects") or [])
+        )
         try:
             locator = page.locator(selector).first
-            await locator.click(timeout=2000)
+            if expects_nav:
+                # If the click doesn't actually trigger a nav (e.g. the link
+                # was already on the destination), expect_navigation raises;
+                # swallow that and fall back to a plain click.
+                try:
+                    async with page.expect_navigation(
+                        wait_until="domcontentloaded", timeout=3000,
+                    ):
+                        await locator.click(timeout=2000)
+                except Exception:  # noqa: BLE001
+                    await locator.click(timeout=2000)
+            else:
+                await locator.click(timeout=2000)
             self._record(
                 event_type="action",
                 route=route["path"],
