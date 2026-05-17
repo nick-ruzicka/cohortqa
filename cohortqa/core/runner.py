@@ -1,0 +1,444 @@
+"""Generic PersonaLab browser runner.
+
+Drives one persona through one app's routes in an isolated headless
+Playwright context. Persists a JSONL session log to the app's
+``runs_dir``. The runner has no app-specific knowledge — it consumes
+``app_config`` (loaded via personalab.core.persona_schema) and the
+persona dict, then takes a small handful of behaviorally-justified
+actions per route.
+
+The runner *observes* and *interacts*; it doesn't *interpret*. Friction
+analysis happens later in ``personalab.core.analyzer`` once the session
+log is complete.
+
+Output schema (one JSON object per line in the JSONL):
+
+  {
+    "ts": "2026-05-17T07:02:15.123Z",
+    "persona_id": "senior-gtm-eng-nyc",
+    "source": "personalab:senior-gtm-eng-nyc",
+    "event_type": "nav" | "capture" | "action" | "reasoning" | "error" | "scenario_applied",
+    "route": "/pipeline" | null,
+    "action": "run_scan" | null,
+    "selector": "button:has-text('Run Scan')" | null,
+    "reasoning": "Medium-speed reader; triggering scan to surface fresh roles." | null,
+    "render_time_ms": 1843 | null,
+    "page_state": {
+      "url": "...",
+      "title": "...",
+      "body_text_length": 12345,
+      "visible_action_names": ["run_scan", "click_role_row"],
+      "console_errors": [],
+    } | null
+  }
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Awaitable, Callable, Iterable
+
+from .behavior import (
+    actions_for_route,
+    archetype_engagement,
+    click_delay_ms,
+    detail_dwell_ms,
+)
+
+
+# ─── Event model ──────────────────────────────────────────────────────────────
+
+def _iso_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+@dataclass
+class SessionEvent:
+    persona_id: str
+    event_type: str
+    route: str | None = None
+    action: str | None = None
+    selector: str | None = None
+    reasoning: str | None = None
+    render_time_ms: int | None = None
+    page_state: dict[str, Any] | None = None
+    ts: str = field(default_factory=_iso_now)
+
+    def to_jsonl(self) -> str:
+        # Source tag is derived, not stored — it's the same for every event
+        # in a session and we want personalab's events to be filterable in
+        # downstream analytics with a single string match.
+        d = {
+            "ts": self.ts,
+            "persona_id": self.persona_id,
+            "source": f"personalab:{self.persona_id}",
+            "event_type": self.event_type,
+            "route": self.route,
+            "action": self.action,
+            "selector": self.selector,
+            "reasoning": self.reasoning,
+            "render_time_ms": self.render_time_ms,
+            "page_state": self.page_state,
+        }
+        return json.dumps(d, ensure_ascii=False)
+
+
+# ─── Runner ───────────────────────────────────────────────────────────────────
+
+# A ContextHook is an optional async callable invoked after the
+# BrowserContext is created but before the first navigation. The smoke
+# test uses it to install Playwright route interception so the runner
+# can be exercised without a real dev server. Production runs pass None.
+ContextHook = Callable[[Any], Awaitable[None]]
+
+
+class PersonaRunner:
+    """Run one persona through one app's routes.
+
+    Parameters
+    ----------
+    persona
+        Persona dict (already validated; see ``load_persona``).
+    persona_id
+        Stable id used in event tags + the output filename.
+    app_config
+        App config dict (already validated; see ``load_app_config``).
+    runs_dir
+        Where the JSONL session log lands. Defaults to the app_config's
+        ``runs_dir`` resolved relative to ``app_config_dir``.
+    app_config_dir
+        Directory the app_config was loaded from; used to resolve runs_dir.
+    headless
+        Playwright headless mode. Default True.
+    dev_server_override
+        Optional URL to use instead of ``app_config["app"]["dev_server"]``.
+        Useful for tests that point at a fixture server.
+    context_hook
+        Optional async callable receiving the freshly-created
+        BrowserContext. Tests use this to install route interception.
+    """
+
+    def __init__(
+        self,
+        persona: dict[str, Any],
+        persona_id: str,
+        app_config: dict[str, Any],
+        runs_dir: str | Path | None = None,
+        app_config_dir: str | Path | None = None,
+        headless: bool = True,
+        dev_server_override: str | None = None,
+        context_hook: ContextHook | None = None,
+    ) -> None:
+        self.persona = persona
+        self.persona_id = persona_id
+        self.app_config = app_config
+        self.headless = headless
+        self.dev_server = dev_server_override or app_config["app"]["dev_server"]
+        self.context_hook = context_hook
+
+        # Resolve runs_dir. If caller passed one, honour it. Otherwise read
+        # from app_config["runs_dir"] and resolve against app_config_dir
+        # (which the loader doesn't track — caller must supply).
+        if runs_dir is not None:
+            self.runs_dir = Path(runs_dir)
+        elif app_config_dir is not None:
+            self.runs_dir = Path(app_config_dir) / app_config["runs_dir"]
+        else:
+            self.runs_dir = Path(app_config["runs_dir"])
+
+        self.events: list[SessionEvent] = []
+        self.console_errors: list[str] = []
+        self.session_path: Path | None = None
+
+    # ─── Event helpers ────────────────────────────────────────────────────────
+
+    def _record(self, **kwargs: Any) -> SessionEvent:
+        ev = SessionEvent(persona_id=self.persona_id, **kwargs)
+        self.events.append(ev)
+        return ev
+
+    # ─── Pure logic exposed for the analyzer / orchestrator ───────────────────
+
+    @property
+    def session_summary(self) -> dict[str, Any]:
+        action_count = sum(1 for e in self.events if e.event_type == "action")
+        nav_count = sum(1 for e in self.events if e.event_type == "nav")
+        return {
+            "persona_id": self.persona_id,
+            "engagement": archetype_engagement(self.persona),
+            "routes_visited": nav_count,
+            "actions_taken": action_count,
+            "errors": len(self.console_errors),
+            "events": len(self.events),
+            "session_path": str(self.session_path) if self.session_path else None,
+        }
+
+    # ─── Main entrypoint ──────────────────────────────────────────────────────
+
+    async def run(self) -> dict[str, Any]:
+        """Execute the full session. Returns ``session_summary``."""
+        # Import lazily so non-runner consumers (analyzer, behavior tests)
+        # don't pay the playwright import cost.
+        from playwright.async_api import async_playwright
+
+        self.runs_dir.mkdir(parents=True, exist_ok=True)
+        self.session_path = self.runs_dir / f"{self.persona_id}-{_timestamp_slug()}.jsonl"
+
+        self._record(
+            event_type="reasoning",
+            reasoning=(
+                f"{self.persona['identity']['name']}: {self.persona['meta_attitude']} "
+                f"Engagement: {archetype_engagement(self.persona)}."
+            ),
+        )
+
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=self.headless)
+            try:
+                context = await browser.new_context(
+                    user_agent=(
+                        f"PersonaLab/0.1 ({self.persona_id}; "
+                        f"+https://example.local/personalab)"
+                    ),
+                    viewport={"width": 1440, "height": 900},
+                )
+                if self.context_hook:
+                    await self.context_hook(context)
+
+                page = await context.new_page()
+                page.on(
+                    "console",
+                    lambda msg: self._on_console(msg),
+                )
+                page.on(
+                    "pageerror",
+                    lambda err: self.console_errors.append(str(err)),
+                )
+
+                for route in self.app_config["routes"]:
+                    await self._visit_route(page, route)
+
+                await context.close()
+            finally:
+                await browser.close()
+
+        self._persist()
+        return self.session_summary
+
+    # ─── Per-route work ───────────────────────────────────────────────────────
+
+    async def _visit_route(self, page: Any, route: dict[str, Any]) -> None:
+        url = self.dev_server.rstrip("/") + route["path"]
+        before = time.monotonic()
+        nav_error: str | None = None
+        try:
+            response = await page.goto(url, wait_until="domcontentloaded", timeout=10000)
+            status = response.status if response else None
+        except Exception as exc:  # noqa: BLE001 — top-level isolation per route
+            status = None
+            nav_error = repr(exc)
+
+        render_ms = int((time.monotonic() - before) * 1000)
+
+        # Capture page state. If navigation failed we still emit a capture
+        # event with the failure so the analyzer sees a friction signal.
+        page_state: dict[str, Any] = {
+            "url": url,
+            "status": status,
+            "title": "",
+            "body_text_length": 0,
+            "visible_action_names": [],
+            "console_errors": list(self.console_errors),
+            "nav_error": nav_error,
+        }
+        if nav_error is None:
+            try:
+                page_state["title"] = await page.title()
+                body_text = await page.evaluate("() => document.body.innerText || ''")
+                page_state["body_text_length"] = len(body_text)
+                page_state["visible_action_names"] = await _visible_action_names(
+                    page, route["actions"], self.app_config["actions"]
+                )
+            except Exception as exc:  # noqa: BLE001
+                page_state["capture_error"] = repr(exc)
+
+        # Slow_load friction: did we exceed the route's budget?
+        budget = route.get("expected_load_time_ms", 2000)
+        slow = render_ms > budget
+
+        self._record(
+            event_type="nav",
+            route=route["path"],
+            render_time_ms=render_ms,
+            page_state=page_state,
+            reasoning=(
+                f"Loaded in {render_ms}ms "
+                f"(budget {budget}ms{'; SLOW' if slow else ''})."
+            ),
+        )
+
+        if nav_error or status not in (None, 200, 304):
+            # Don't try to interact with a broken page.
+            return
+
+        await self._take_route_actions(page, route, page_state["visible_action_names"])
+
+    async def _take_route_actions(
+        self,
+        page: Any,
+        route: dict[str, Any],
+        visible_action_names: list[str],
+    ) -> None:
+        wanted = actions_for_route(self.persona, route)
+        # Only attempt actions the runner could actually see.
+        actually_take = [a for a in wanted if a in visible_action_names]
+
+        # Note the gap between wanted and seen — that itself is friction
+        # signal: persona wants the action, app doesn't surface it.
+        missing = [a for a in wanted if a not in visible_action_names]
+        if missing:
+            self._record(
+                event_type="reasoning",
+                route=route["path"],
+                reasoning=(
+                    f"Persona would have taken {missing!r} but no matching "
+                    f"affordance found on {route['path']}."
+                ),
+            )
+
+        for action_name in actually_take:
+            action_spec = _action_by_name(self.app_config["actions"], action_name)
+            await self._take_action(page, route, action_spec)
+            await page.wait_for_timeout(click_delay_ms(self.persona))
+
+            # Detail-reading dwell — if this action looks like an expansion,
+            # the persona pauses to read.
+            if self.persona["behavioral"]["reads_details"] and (
+                "expand" in action_name or action_name.startswith("open_")
+            ):
+                dwell = detail_dwell_ms(self.persona)
+                if dwell:
+                    # In tests we don't want to actually sleep 80 seconds;
+                    # the runner records the intended dwell but waits a
+                    # capped amount.
+                    self._record(
+                        event_type="reasoning",
+                        route=route["path"],
+                        reasoning=f"Persona dwells {dwell}ms reading detail.",
+                    )
+                    await page.wait_for_timeout(min(dwell, 1500))
+
+    async def _take_action(
+        self,
+        page: Any,
+        route: dict[str, Any],
+        action: dict[str, Any],
+    ) -> None:
+        selector = action["selector"]
+        try:
+            locator = page.locator(selector).first
+            await locator.click(timeout=2000)
+            self._record(
+                event_type="action",
+                route=route["path"],
+                action=action["name"],
+                selector=selector,
+                reasoning=(
+                    f"{action['name']} chosen for "
+                    f"{self.persona['behavioral']['click_speed']}-speed "
+                    f"{self.persona['behavioral']['rejection_threshold']}-threshold "
+                    "persona."
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._record(
+                event_type="error",
+                route=route["path"],
+                action=action["name"],
+                selector=selector,
+                reasoning=f"Action failed: {exc!r}",
+            )
+
+    # ─── Console plumbing ─────────────────────────────────────────────────────
+
+    def _on_console(self, msg: Any) -> None:
+        # Capture errors and warnings only — info/debug noise drowns signal.
+        try:
+            if msg.type in ("error", "warning"):
+                self.console_errors.append(f"[{msg.type}] {msg.text}")
+        except Exception:  # noqa: BLE001
+            pass
+
+    # ─── Persist ──────────────────────────────────────────────────────────────
+
+    def _persist(self) -> None:
+        assert self.session_path is not None
+        with self.session_path.open("w", encoding="utf-8") as fh:
+            for ev in self.events:
+                fh.write(ev.to_jsonl())
+                fh.write("\n")
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+def _timestamp_slug() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _action_by_name(actions: Iterable[dict[str, Any]], name: str) -> dict[str, Any]:
+    for a in actions:
+        if a["name"] == name:
+            return a
+    raise KeyError(f"Action {name!r} not defined in app_config")
+
+
+async def _visible_action_names(
+    page: Any,
+    route_action_names: Iterable[str],
+    all_actions: Iterable[dict[str, Any]],
+) -> list[str]:
+    """Return the subset of route_action_names whose selectors actually
+    resolve to at least one element on the current page."""
+    by_name = {a["name"]: a for a in all_actions}
+    visible: list[str] = []
+    for name in route_action_names:
+        spec = by_name.get(name)
+        if not spec:
+            continue
+        try:
+            count = await page.locator(spec["selector"]).count()
+            if count > 0:
+                visible.append(name)
+        except Exception:  # noqa: BLE001
+            # A selector failing to evaluate is itself information, but we
+            # don't surface it here — the runner records a separate error
+            # event if the action is later attempted.
+            pass
+    return visible
+
+
+# ─── Convenience: read a session JSONL back ───────────────────────────────────
+
+def read_session(path: str | Path) -> list[dict[str, Any]]:
+    """Load a JSONL session log into a list of dicts. Useful for the
+    analyzer and replayer."""
+    events: list[dict[str, Any]] = []
+    with Path(path).open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            events.append(json.loads(line))
+    return events
+
+
+__all__ = [
+    "PersonaRunner",
+    "SessionEvent",
+    "read_session",
+]
