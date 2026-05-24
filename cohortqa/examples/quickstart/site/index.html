@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MyTodos</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 40px auto; max-width: 640px; color: #222; }
+    h1 { font-size: 22px; margin-bottom: 4px; }
+    .sub { color: #777; font-size: 13px; margin-bottom: 24px; }
+    ul { list-style: none; padding: 0; }
+    li { padding: 12px 0; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+    .pri { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #eee; color: #555; }
+    .pri-high { background: #ffe1e1; color: #a30; }
+    a { color: #06c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .btn { display: inline-block; background: #06c; color: white; padding: 8px 16px; border-radius: 4px; margin-top: 16px; }
+    .footer { margin-top: 32px; font-size: 13px; color: #777; }
+  </style>
+</head>
+<body>
+  <h1>MyTodos</h1>
+  <!--
+    NOTE: intentional gap — no "What is MyTodos?" intro copy.
+    Wanderer persona is supposed to flag this on a landing page.
+  -->
+  <ul id="todo-list">
+    <li>
+      <span><a class="todo-link" href="detail.html">Email the new vendor about pricing</a></span>
+      <span class="pri pri-high">high</span>
+    </li>
+    <li>
+      <span><a class="todo-link" href="detail.html">Review Q3 budget draft</a></span>
+      <span class="pri">med</span>
+    </li>
+    <li>
+      <span><a class="todo-link" href="detail.html">Schedule 1:1 with Sara</a></span>
+      <span class="pri">low</span>
+    </li>
+  </ul>
+  <a class="btn" id="add-link" href="add.html">+ Add todo</a>
+  <div class="footer">
+    <a id="done-link" href="done.html">View done</a>
+  </div>
+</body>
+</html>

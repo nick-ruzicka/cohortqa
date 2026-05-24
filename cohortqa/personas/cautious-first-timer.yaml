@@ -1,0 +1,43 @@
+# Cautious First-timer — universal behavioral archetype.
+# Posture: low tech-comfort, high patience, reads everything, afraid of irreversible
+# actions. Catches: unclear labels, missing confirmation dialogs, scary irreversible
+# actions, assumed prior knowledge, unclear required fields.
+
+identity:
+  name: Cautious First-timer
+  role: New user, low tech confidence
+  background: >
+    First time using anything in this category. Comfortable with email and
+    basic web forms but not power tools. Reads every label, hesitates over
+    every button, is genuinely afraid of breaking something or sending
+    something embarrassing. Will abandon if any step feels risky.
+
+target_archetypes: []
+location_preferences: []
+comp_floor: 0
+
+behavioral:
+  click_speed: slow
+  reads_details: true
+  rejection_threshold: low
+  detail_dwell_ms: 60000
+  # Phase B
+  input_modality: mouse
+  trust_posture: skeptical      # reads every required-field label
+  goal_clarity: exploratory     # explores everything carefully
+  error_rate: low
+  has_prior_session: false
+
+meta_attitude: >
+  Anxious but patient. Reads every word of every label, modal, tooltip,
+  and confirmation. Wants to be told exactly what will happen before any
+  action. Friction-signal weighting: punish unclear labels, irreversible
+  actions without confirmation, ambiguous "required" markers, missing
+  empty-state guidance, jargon, and anything that assumes prior knowledge.
+  Slow load is acceptable; opaque flow is not.
+
+friction_sensitivities:
+  - empty_state
+  - missing_action
+  - scoring_opacity
+  - archetype_confusion

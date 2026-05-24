@@ -6,11 +6,185 @@ route, plus the timing between actions. Decisions are deterministic so
 session logs replay byte-for-byte across runs (see ``replayer.py``,
 planned P6). Stochasticity, if we ever want it, belongs in the
 analyzer — Claude can roll the dice on rationale.
+
+Phase B added five optional persona fields that change what the runner
+physically does, not just what the analyzer reads. All five default to
+the Phase A behavior (mouse/trusting/exploratory/low/false) — old personas
+keep navigating exactly as before, while new personas can opt into
+keyboard navigation, error simulation, route filtering, etc.
 """
 
 from __future__ import annotations
 
 from typing import Any
+
+# ─── Phase B: extended-behavior defaults ─────────────────────────────────────
+#
+# Optional persona fields, with defaults that match Phase A behavior
+# (mouse, trusting, exploratory, low error, no prior session). The runner
+# consults these via the small accessor helpers below so reaching into
+# the dict in multiple places doesn't drift.
+
+_DEFAULT_INPUT_MODALITY = "mouse"          # mouse | keyboard | touch
+_DEFAULT_TRUST_POSTURE = "trusting"        # trusting | skeptical | paranoid
+_DEFAULT_GOAL_CLARITY = "exploratory"      # clear | exploratory | lost
+                                           # 'exploratory' = Phase A behavior
+                                           # (visit every declared route in
+                                           # order). Legacy personas without
+                                           # a goal_clarity field MUST get
+                                           # this default for back-compat.
+_DEFAULT_ERROR_RATE = "low"                # low | medium | high
+_DEFAULT_HAS_PRIOR_SESSION = False         # bool
+
+KNOWN_INPUT_MODALITIES = frozenset({"mouse", "keyboard", "touch"})
+KNOWN_TRUST_POSTURES = frozenset({"trusting", "skeptical", "paranoid"})
+KNOWN_GOAL_CLARITIES = frozenset({"clear", "exploratory", "lost"})
+KNOWN_ERROR_RATES = frozenset({"low", "medium", "high"})
+
+
+def input_modality(persona: dict[str, Any]) -> str:
+    """The persona's input modality — drives whether the runner uses
+    locator.click() (mouse), locator.tap() (touch), or focus+keyboard.press
+    ("Enter") (keyboard). Defaults to mouse for Phase A personas that don't
+    declare the field."""
+    return (persona.get("behavioral") or {}).get(
+        "input_modality", _DEFAULT_INPUT_MODALITY
+    )
+
+
+def trust_posture(persona: dict[str, Any]) -> str:
+    """The persona's data-trust posture. Used by the runner to filter
+    actions whose declared side_effects look like data-asks (paranoid)
+    or signup/persist (paranoid only). Analyzer reads it from the persona
+    context for lens weighting."""
+    return (persona.get("behavioral") or {}).get(
+        "trust_posture", _DEFAULT_TRUST_POSTURE
+    )
+
+
+def goal_clarity(persona: dict[str, Any]) -> str:
+    """Goal clarity. 'clear' personas visit routes in declared order and
+    stop after 3; 'exploratory' visit every route the app declares (Phase
+    A behavior); 'lost' personas re-visit the entry route after each detour
+    (modelling a user who keeps returning to home looking for the right
+    path)."""
+    return (persona.get("behavioral") or {}).get(
+        "goal_clarity", _DEFAULT_GOAL_CLARITY
+    )
+
+
+def error_rate(persona: dict[str, Any]) -> str:
+    """How often the persona generates noisy interactions (double-clicks,
+    browser-back, mis-targeted clicks). 'low' → never; 'medium' → on
+    every ~3rd action; 'high' → on every ~2nd action."""
+    return (persona.get("behavioral") or {}).get(
+        "error_rate", _DEFAULT_ERROR_RATE
+    )
+
+
+def has_prior_session(persona: dict[str, Any]) -> bool:
+    """True if the persona is a 'returning user' — has muscle memory,
+    expects to jump to deep routes without re-walking onboarding. The
+    runner uses this to reverse the route visit order (deep first)."""
+    return bool((persona.get("behavioral") or {}).get(
+        "has_prior_session", _DEFAULT_HAS_PRIOR_SESSION
+    ))
+
+
+def routes_for_persona(
+    persona: dict[str, Any],
+    routes: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """The ordered list of routes the persona will visit.
+
+    - has_prior_session=True reverses the route order (returning users
+      jump to deep routes first, treating the landing page as already-
+      known).
+    - goal_clarity='clear' caps the route count at 3 (focused user heads
+      to their known destinations and stops).
+    - goal_clarity='lost' interleaves the entry route between each visit
+      (modelling a user who returns to home each time looking for the
+      right path).
+    - goal_clarity='exploratory' (default) visits every declared route
+      in order — current Phase A behavior.
+
+    Backward compatibility: a persona with no extended fields gets the
+    full ordered route list, identical to Phase A.
+    """
+    if not routes:
+        return []
+    seq = list(routes)
+    if has_prior_session(persona):
+        seq = list(reversed(seq))
+    clarity = goal_clarity(persona)
+    if clarity == "clear":
+        return seq[:3]
+    if clarity == "lost":
+        entry = seq[0]
+        out = [entry]
+        for r in seq[1:]:
+            out.append(r)
+            out.append(entry)  # bounce back to entry between detours
+        return out
+    # 'exploratory' (default) — full ordered list
+    return seq
+
+
+def should_double_click_after(persona: dict[str, Any], action_index: int) -> bool:
+    """Phase B: occasional error-simulation. The error-prone persona
+    double-clicks deterministically on the action index (so traces
+    replay byte-for-byte)."""
+    rate = error_rate(persona)
+    if rate == "high":
+        return action_index % 2 == 0
+    if rate == "medium":
+        return action_index % 3 == 0
+    return False
+
+
+def should_go_back_after(persona: dict[str, Any], action_index: int) -> bool:
+    """Phase B: simulate a user who occasionally hits browser back —
+    error-prone or lost personas. Deterministic on action_index."""
+    if goal_clarity(persona) == "lost":
+        # Lost personas hit back periodically because they realise they're
+        # in the wrong place.
+        return action_index > 0 and action_index % 3 == 0
+    if error_rate(persona) == "high":
+        return action_index > 0 and action_index % 4 == 0
+    return False
+
+
+def trust_filters_action(persona: dict[str, Any], action: dict[str, Any]) -> bool:
+    """Phase B: returns True if the persona's trust posture would refuse
+    this action. A paranoid persona skips any action whose side_effects
+    advertise data-asks (e.g. ``asks:email``, ``persists:profile``);
+    a skeptical persona allows persistence but skips signup/login flows
+    that ask for data. Trusting (default) allows everything.
+
+    Action authors signal trust-relevant intent via these prefixes in
+    side_effects:
+        asks:<field>     — collects a piece of personal data
+        signup:<thing>   — creates an account / commits identity
+        persists:<thing> — writes data the user owns to a server
+
+    This filter runs BEFORE protected-action enforcement, so an action
+    that's both protected and trust-filtered is still recorded as
+    intent (the protected-action path), just with an additional
+    trust-posture reason."""
+    posture = trust_posture(persona)
+    if posture == "trusting":
+        return False
+    sides = action.get("side_effects") or []
+    for se in sides:
+        if not isinstance(se, str):
+            continue
+        if posture in {"skeptical", "paranoid"} and se.startswith("asks:"):
+            return True
+        if posture == "paranoid" and (
+            se.startswith("signup:") or se.startswith("persists:")
+        ):
+            return True
+    return False
 
 # ─── Protected side-effects ───────────────────────────────────────────────────
 #
@@ -152,10 +326,24 @@ def archetype_engagement(persona: dict[str, Any]) -> str:
 __all__ = [
     "CLICK_DELAY_MS",
     "PROTECTED_SIDE_EFFECT_PREFIXES",
+    "KNOWN_INPUT_MODALITIES",
+    "KNOWN_TRUST_POSTURES",
+    "KNOWN_GOAL_CLARITIES",
+    "KNOWN_ERROR_RATES",
     "click_delay_ms",
     "detail_dwell_ms",
     "chooses_action",
     "actions_for_route",
     "archetype_engagement",
     "is_protected_action",
+    # Phase B
+    "input_modality",
+    "trust_posture",
+    "goal_clarity",
+    "error_rate",
+    "has_prior_session",
+    "routes_for_persona",
+    "should_double_click_after",
+    "should_go_back_after",
+    "trust_filters_action",
 ]

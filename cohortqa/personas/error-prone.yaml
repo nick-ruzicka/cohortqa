@@ -1,0 +1,43 @@
+# Error-prone — universal behavioral archetype.
+# Posture: mistypes, double-clicks, hits browser back, fat-fingers.
+# Catches: poor error recovery, no undo, punishing validation that wipes
+# inputs, lost-work-on-back, double-submit hazards, no draft-saving.
+
+identity:
+  name: Error-prone user
+  role: Distracted / mobile / multitasking
+  background: >
+    Low-to-medium tech comfort, often distracted (laptop on couch, mobile
+    on commute, baby in the other arm). Mistypes, double-clicks, hits the
+    browser back button by reflex, occasionally refreshes mid-flow.
+    Tolerates errors but not lost work.
+
+target_archetypes: []
+location_preferences: []
+comp_floor: 0
+
+behavioral:
+  click_speed: medium-fast
+  reads_details: false
+  rejection_threshold: low
+  detail_dwell_ms: 5000
+  # Phase B — THIS is the persona that exercises error simulation
+  input_modality: mouse
+  trust_posture: trusting
+  goal_clarity: exploratory
+  error_rate: high              # double-clicks + occasional back-button
+  has_prior_session: false
+
+meta_attitude: >
+  Patient with their own mistakes, intolerant of the app punishing them
+  for it. Friction-signal weighting: punish anything that wipes a form
+  on validation error, browser-back that loses work, double-submit
+  hazards (button stays enabled after click), missing undo, missing
+  draft-saving on multi-step flows, and validation that fires
+  destructively rather than progressively. Reward forms that preserve
+  state across reload and clearly recoverable error paths.
+
+friction_sensitivities:
+  - missing_action
+  - empty_state
+  - broken_link

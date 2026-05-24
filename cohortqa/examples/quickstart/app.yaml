@@ -1,0 +1,176 @@
+# PersonaLab quickstart — MyTodos app config.
+#
+# A deliberately-imperfect 4-page TODO app, served as static HTML, so
+# you can run PersonaLab end-to-end in ~5 minutes against a real
+# browser without spinning up a backend.
+#
+# The friction issues are intentional and hand-crafted. After running,
+# you should see the personas surface things like:
+#   - "no labels on add-form fields"   (cautious-first-timer, keyboard-only)
+#   - "detail page has no back-link"   (wanderer)
+#   - "done page is a dead-end"        (returning-user, wanderer)
+#   - "save_todo writes data — paranoid persona refused via trust filter"
+#                                       (skeptic, via Phase C pre-pass)
+# That's the moat in legible form. Edit this file or the personas
+# beside it to point PersonaLab at your own app.
+
+app:
+  name: MyTodos
+  dev_server: http://localhost:8765
+  description: >
+    A small 4-page TODO app — landing list, add form, detail view,
+    and done list. Hand-crafted for the PersonaLab quickstart.
+    Deliberately imperfect so the personas surface real friction.
+
+routes:
+  - path: /index.html
+    purpose: Landing — list of active todos with link to add or view done.
+    actions:
+      - click_add
+      - click_detail
+      - click_view_done
+    expected_load_time_ms: 1500
+
+  - path: /add.html
+    purpose: Form to create a new todo (title, priority, description).
+    actions:
+      - fill_title
+      - select_priority
+      - fill_description
+      - save_todo
+      - back_to_list           # Declared but NOT rendered on the page
+                               # — runner records "missing affordance"
+                               # for every persona that wanted it.
+    expected_load_time_ms: 1500
+
+  - path: /detail.html
+    purpose: Single-todo detail with Mark Done / Delete actions.
+    actions:
+      - mark_done
+      - delete_todo
+      - back_to_list           # Also declared but not rendered.
+    expected_load_time_ms: 1500
+
+  - path: /done.html
+    purpose: Completed todos.
+    actions:
+      - back_to_active         # Declared but not rendered — dead-end.
+      - restore_todo           # Declared but not rendered.
+    expected_load_time_ms: 1500
+
+actions:
+  # ─── Navigation (/index.html) ───────────────────────────────────────────────
+  - name: click_add
+    selector: 'a#add-link'
+    side_effects: ["navigates_to:/add.html"]
+
+  - name: click_detail
+    selector: 'a.todo-link'
+    side_effects: ["navigates_to:/detail.html"]
+
+  - name: click_view_done
+    selector: 'a#done-link'
+    side_effects: ["navigates_to:/done.html"]
+
+  # ─── Add form (/add.html) ───────────────────────────────────────────────────
+  # NOTE: the form-fill actions have no side_effects because filling an
+  # input doesn't mutate server state. save_todo is the protected one.
+  - name: fill_title
+    selector: 'input#meta-title'
+
+  - name: select_priority
+    selector: 'select#meta-priority'
+
+  - name: fill_description
+    selector: 'textarea#meta-description'
+
+  - name: save_todo
+    selector: 'button#save-btn'
+    # Trust-relevant + protected. paranoid trust posture (skeptic)
+    # refuses this via the Phase C pre-pass; the framework's
+    # write-protection ALSO logs intent without clicking. Both safety
+    # layers visible in the trace.
+    side_effects:
+      - "persists:todo"           # paranoid refuses
+      - "writes:db.todos"         # always intent-logged, never clicked
+
+  # ─── Detail page (/detail.html) ─────────────────────────────────────────────
+  # Mark Done is protected (mutates state). Delete is protected AND
+  # destructive — would be the textbook "needs confirmation" UX issue.
+  - name: mark_done
+    selector: 'button#mark-done-btn'
+    side_effects: ["writes:db.todos"]
+
+  - name: delete_todo
+    selector: 'button#delete-btn'
+    side_effects: ["writes:db.todos"]
+
+  # ─── Intentionally missing affordances ──────────────────────────────────────
+  # These actions are DECLARED (so personas express intent to use them)
+  # but the selectors don't match anything on the page. The runner
+  # records a "no matching affordance" reasoning event per route per
+  # persona — the analyzer + synthesizer then cluster these into a
+  # cross-persona missing_action / navigation friction finding.
+  - name: back_to_list
+    selector: 'a#back-link, a:has-text("Back to list")'
+
+  - name: back_to_active
+    selector: 'a#back-active, a:has-text("Back to active")'
+
+  - name: restore_todo
+    selector: 'button.restore-btn'
+
+friction_signals:
+  - type: navigation
+    description: >
+      Persona can't get back to where they came from — no breadcrumb,
+      no back link, no clear home indicator.
+
+  - type: missing_action
+    description: >
+      Persona expects an affordance (Back to list, Cancel, Restore,
+      undo) and the page doesn't surface it. The runner logs
+      "no matching affordance" reasoning events that the analyzer
+      then clusters into this finding.
+
+  - type: scoring_opacity
+    description: >
+      Persona sees a state indicator (priority chip, deal stage) and
+      can't tell what drives it. On MyTodos the most plausible hit
+      is the priority chip on detail.html — no legend.
+
+  - type: data_density
+    description: >
+      Page renders too much information at once. Unlikely to fire on
+      MyTodos (the pages are sparse) — included so the taxonomy is
+      complete.
+
+  - type: empty_state
+    description: >
+      Surface shows no data and offers no recovery path. The done.html
+      dead-end fires this — completed list with no "back to active"
+      or "restore" affordances.
+
+  - type: broken_link
+    description: >
+      Link 404s or leads to an empty page.
+
+  - type: slow_load
+    description: >
+      Route exceeds its expected_load_time_ms. Unlikely on static
+      HTML; included for completeness.
+
+  - type: archetype_confusion
+    description: >
+      Persona uncertain how a page's domain concepts fit together.
+      Reused taxonomy slot.
+
+  - type: instrumentation_gap
+    description: >
+      The runner can't tell whether the page lacks the affordance or
+      its selector is stale. With static HTML and explicit IDs this
+      should be near zero — but the slot exists for when it matters.
+
+personas_dir: personas
+scenarios_dir: scenarios
+runs_dir: _runs

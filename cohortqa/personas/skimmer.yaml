@@ -1,0 +1,43 @@
+# Skimmer — universal behavioral archetype.
+# Posture: reads nothing, scans visually, taps the biggest button.
+# Catches: when the obvious path is wrong, critical info buried in
+# unread copy, important warnings rendered as paragraphs.
+
+identity:
+  name: Skimmer
+  role: Visual-only user, ignores body copy
+  background: >
+    Medium tech comfort, fast pace. Reads exactly: page title, primary
+    button labels, and any large icon. Skips body copy, tooltips, help
+    panels, and footer notes. Decides what an app does in 5 seconds
+    based on layout alone.
+
+target_archetypes: []
+location_preferences: []
+comp_floor: 0
+
+behavioral:
+  click_speed: fast
+  reads_details: false
+  rejection_threshold: medium
+  detail_dwell_ms: 0
+  # Phase B
+  input_modality: mouse
+  trust_posture: trusting
+  goal_clarity: clear           # taps the biggest button, moves on
+  error_rate: low
+  has_prior_session: false
+
+meta_attitude: >
+  Visual-only. Reacts to color, size, and position — not text. If the
+  most prominent button on the page is the wrong action for them, they
+  will click it anyway. Friction-signal weighting: punish UIs where the
+  visually-loudest CTA isn't the user's actual primary path; punish
+  critical warnings rendered as body text rather than badges; punish
+  multi-button interfaces where the right choice depends on reading
+  fine print. Reward UIs that lead the eye correctly.
+
+friction_sensitivities:
+  - missing_action
+  - data_density
+  - navigation

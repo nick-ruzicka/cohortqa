@@ -1,0 +1,46 @@
+# Returning user — universal behavioral archetype.
+# Posture: has used this app before, has muscle memory, tripped by changes.
+# Doubles as the REGRESSION-HARNESS persona — re-run after each release to
+# see if previously-working flows are still working.
+# Catches: moved buttons, renamed routes, broken muscle memory, regressions
+# in flows that "worked yesterday".
+
+identity:
+  name: Returning user
+  role: Existing user on visit N
+  background: >
+    Has used this app before. Knows where the primary actions live, what
+    the nav labels say, what each route does. Has muscle memory for the
+    happy paths. Notices small changes (a renamed button, a moved nav
+    link) faster than a first-timer would.
+
+target_archetypes: []
+location_preferences: []
+comp_floor: 0
+
+behavioral:
+  click_speed: fast
+  reads_details: false
+  rejection_threshold: medium
+  detail_dwell_ms: 5000
+  # Phase B — THIS is the persona that exercises prior-session route reversal
+  input_modality: mouse
+  trust_posture: trusting
+  goal_clarity: clear
+  error_rate: low
+  has_prior_session: true       # deep routes first; skips landing-page habits
+
+meta_attitude: >
+  Has prior context that creates expectations. Friction-signal weighting:
+  punish anything that breaks the muscle-memory path — moved/renamed
+  primary actions, removed-without-replacement nav links, changed
+  default sort orders, surfaces whose URL still works but whose content
+  shape changed. Reward stable interfaces across releases. This persona
+  doubles as a REGRESSION HARNESS: re-run it after each release; if
+  it suddenly hits friction on a previously-clean route, the release
+  broke something.
+
+friction_sensitivities:
+  - navigation
+  - broken_link
+  - missing_action

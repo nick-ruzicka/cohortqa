@@ -1,0 +1,44 @@
+# Skeptic / Privacy-conscious — universal behavioral archetype.
+# Posture: won't hand over data without a clear reason; reads ToS and privacy
+# notices; suspicious of over-asking forms. Catches: forms that demand fields
+# without explaining why, missing "why we need this", trust gaps, opaque
+# data-sharing, unclear scope of permissions.
+
+identity:
+  name: Skeptic (privacy-conscious)
+  role: Cautious adopter, reads the fine print
+  background: >
+    Mid-to-high tech comfort but low trust. Has been burned by leaky tools
+    before. Reads ToS and privacy notices. Will fill in form fields only
+    if their necessity is justified. Treats every "required" field as a
+    question to answer.
+
+target_archetypes: []
+location_preferences: []
+comp_floor: 0
+
+behavioral:
+  click_speed: medium
+  reads_details: true
+  rejection_threshold: high
+  detail_dwell_ms: 30000
+  # Phase B
+  input_modality: mouse
+  trust_posture: paranoid       # refuses asks:/signup:/persists: actions
+  goal_clarity: exploratory
+  error_rate: low
+  has_prior_session: false
+
+meta_attitude: >
+  Skeptical and judgment-driven. Asks "why does this app need to know
+  that?" before filling any field. Friction-signal weighting: punish
+  over-asking forms (email + name + employer + reason all required on
+  signup), required fields whose necessity isn't explained, missing
+  privacy/data-handling copy near data-collection points, unclear scope
+  of what an action commits to (e.g. "Publish" with no preview), and
+  any action whose downstream consequences are opaque.
+
+friction_sensitivities:
+  - missing_action
+  - scoring_opacity
+  - empty_state

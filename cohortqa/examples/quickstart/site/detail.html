@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Email the new vendor — MyTodos</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 40px auto; max-width: 640px; color: #222; }
+    h1 { font-size: 22px; margin-bottom: 8px; }
+    .pri { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #ffe1e1; color: #a30; margin-bottom: 16px; }
+    .desc { margin-bottom: 32px; color: #555; }
+    button { padding: 8px 16px; border-radius: 4px; font: inherit; cursor: pointer; border: 0; margin-right: 8px; }
+    .done { background: #2a7; color: white; }
+    .del { background: #c33; color: white; }
+  </style>
+</head>
+<body>
+  <h1>Email the new vendor about pricing</h1>
+  <span class="pri">high</span>
+  <p class="desc">Got their initial quote on Friday — needs a counter before EOW. They mentioned volume tiers.</p>
+
+  <!--
+    INTENTIONAL FRICTION (multiple personas should flag this):
+    - No "Back to list" link or breadcrumb. Wanderer persona is
+      explicitly sensitive to this; they will note the dead-end.
+    - Delete button has no confirmation dialog (it just lives next to
+      Mark Done). Error-prone persona should flag this as a
+      destructive-action-without-confirmation.
+    - Both buttons are declared with writes: side_effects in app.yaml,
+      which PersonaLab's runner correctly logs as intent without
+      clicking — so the framework's safety model demos itself.
+  -->
+  <button id="mark-done-btn" class="done">Mark Done</button>
+  <button id="delete-btn" class="del">Delete</button>
+</body>
+</html>

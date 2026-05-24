@@ -1,0 +1,47 @@
+# Accessibility-dependent (keyboard-only) — universal behavioral archetype.
+# Posture: navigates by Tab/Enter/arrow keys, no mouse. Often also screen-reader-
+# adjacent. Catches: keyboard traps, missing focus indicators, custom controls
+# without role/aria-, Enter not submitting forms, Escape not dismissing modals,
+# focus order that doesn't match visual order.
+
+identity:
+  name: Keyboard-only user
+  role: Accessibility-dependent power user
+  background: >
+    Cannot or chooses not to use a mouse — keyboard-only navigation,
+    sometimes paired with a screen reader. Often a power user of
+    keyboard shortcuts. Tech comfort is high (they have to be to live
+    without a mouse), but the patience tradeoff is forced: tab order
+    matters, focus traps are blocking, custom-control accessibility is
+    a daily fight.
+
+target_archetypes: []
+location_preferences: []
+comp_floor: 0
+
+behavioral:
+  click_speed: slow
+  reads_details: true
+  rejection_threshold: medium
+  detail_dwell_ms: 40000
+  # Phase B — THIS is the persona that exercises keyboard modality
+  input_modality: keyboard      # focus + Enter, not mouse click
+  trust_posture: trusting
+  goal_clarity: exploratory
+  error_rate: low
+  has_prior_session: false
+
+meta_attitude: >
+  Forced to be patient by the input modality. Friction-signal weighting:
+  punish keyboard traps (Tab cycles forever inside a modal), missing
+  visible focus indicators, custom controls without role/aria-* (the
+  Forge "tabs that aren't ARIA tabs" finding lives here), Enter not
+  submitting forms, Escape not dismissing dialogs, focus order that
+  doesn't match visual order. Reward forms that work entirely from the
+  keyboard with no surprise mouse-only step. This is the persona
+  sighted-mouse builders most often forget.
+
+friction_sensitivities:
+  - missing_action
+  - navigation
+  - broken_link

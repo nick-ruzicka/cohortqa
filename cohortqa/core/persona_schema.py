@@ -51,6 +51,14 @@ KNOWN_FRICTION_TYPES = frozenset({
 KNOWN_CLICK_SPEEDS = frozenset({"slow", "medium", "medium-fast", "fast"})
 KNOWN_REJECTION_THRESHOLDS = frozenset({"low", "medium", "medium-high", "high"})
 
+# Phase B: optional extended-behavior vocabularies. A persona may omit any
+# of these fields; the runner uses sensible defaults (mouse / trusting /
+# exploratory / low / False) per personalab/core/behavior.py.
+KNOWN_INPUT_MODALITIES = frozenset({"mouse", "keyboard", "touch"})
+KNOWN_TRUST_POSTURES = frozenset({"trusting", "skeptical", "paranoid"})
+KNOWN_GOAL_CLARITIES = frozenset({"clear", "exploratory", "lost"})
+KNOWN_ERROR_RATES = frozenset({"low", "medium", "high"})
+
 _URL_RE = re.compile(r"^https?://[^\s]+$")
 
 
@@ -253,6 +261,44 @@ def validate_persona(cfg: Any) -> tuple[bool, list[str]]:
             )
         _require_bool(behavioral, "reads_details", "persona.behavioral", errors)
         _require_int(behavioral, "detail_dwell_ms", "persona.behavioral", errors)
+
+        # Phase B: optional extended-behavior fields. If present, must be
+        # from the known vocab; if absent, the runner uses defaults.
+        _opt_vocab_field = lambda key, vocab: (
+            behavioral.get(key) is not None
+            and behavioral.get(key) not in vocab
+        )
+        if _opt_vocab_field("input_modality", KNOWN_INPUT_MODALITIES):
+            errors.append(
+                f"persona.behavioral.input_modality: must be one of "
+                f"{sorted(KNOWN_INPUT_MODALITIES)}, got "
+                f"{behavioral.get('input_modality')!r}"
+            )
+        if _opt_vocab_field("trust_posture", KNOWN_TRUST_POSTURES):
+            errors.append(
+                f"persona.behavioral.trust_posture: must be one of "
+                f"{sorted(KNOWN_TRUST_POSTURES)}, got "
+                f"{behavioral.get('trust_posture')!r}"
+            )
+        if _opt_vocab_field("goal_clarity", KNOWN_GOAL_CLARITIES):
+            errors.append(
+                f"persona.behavioral.goal_clarity: must be one of "
+                f"{sorted(KNOWN_GOAL_CLARITIES)}, got "
+                f"{behavioral.get('goal_clarity')!r}"
+            )
+        if _opt_vocab_field("error_rate", KNOWN_ERROR_RATES):
+            errors.append(
+                f"persona.behavioral.error_rate: must be one of "
+                f"{sorted(KNOWN_ERROR_RATES)}, got "
+                f"{behavioral.get('error_rate')!r}"
+            )
+        if "has_prior_session" in behavioral and not isinstance(
+            behavioral["has_prior_session"], bool
+        ):
+            errors.append(
+                f"persona.behavioral.has_prior_session: must be bool, got "
+                f"{type(behavioral['has_prior_session']).__name__}"
+            )
 
     # Friction sensitivities must be from the known vocabulary; the
     # cross-config check (against an app's declared signals) is separate.

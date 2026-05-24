@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Add — MyTodos</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 40px auto; max-width: 640px; color: #222; }
+    h1 { font-size: 22px; margin-bottom: 24px; }
+    input, textarea, select { width: 100%; padding: 8px; margin-bottom: 16px; font: inherit; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    button { background: #06c; color: white; padding: 8px 16px; border: 0; border-radius: 4px; font: inherit; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Add a todo</h1>
+  <!--
+    INTENTIONAL FRICTION (multiple personas should flag this):
+    - No <label> elements on any field. Fields use placeholders only,
+      which keyboard-only / screen-reader users can't reach via Tab.
+      Cautious-first-timer should also flag this — they read labels.
+    - No required-field markers anywhere. Skimmer + first-timer expect
+      to see which fields are mandatory.
+    - No "Cancel" / "Back to list" link. Error-prone persona who hits
+      this page by mistake has no escape.
+    - The Save button has a persists: side_effect declared in app.yaml,
+      which paranoid skeptic should refuse via the trust filter.
+  -->
+  <form id="add-form">
+    <input id="meta-title" type="text" placeholder="What needs doing?" />
+    <select id="meta-priority">
+      <option value="">priority</option>
+      <option value="high">high</option>
+      <option value="med">med</option>
+      <option value="low">low</option>
+    </select>
+    <textarea id="meta-description" placeholder="(optional) extra context" rows="4"></textarea>
+    <button id="save-btn" type="button">Save</button>
+  </form>
+</body>
+</html>

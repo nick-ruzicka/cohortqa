@@ -17,7 +17,6 @@ from personalab.core.synthesizer import (
     SynthesizerConfig,
     _build_synth_system_prompt,
     _build_synth_user_message,
-    _summary_references_groups,
     find_latest_reports_per_persona,
     render_polish_spec,
 )
@@ -373,157 +372,13 @@ def test_render_polish_spec_tags_low_confidence_patterns():
     assert "⚠️" not in real_header
 
 
-# ─── Single-root-cause detector (Phase B #5) ─────────────────────────────────
-
-def test_demote_forces_low_for_instrumentation_gap_patterns():
-    """Rule 1: instrumentation_gap is by definition advisory. Any pattern
-    of that type gets confidence=low regardless of what the LLM said."""
-    from personalab.core.synthesizer import demote_low_confidence_patterns
-
-    spec = PolishSpec(
-        overall_summary=".",
-        patterns=[
-            FrictionPattern(
-                title="Maybe /context is broken",
-                signal_type="instrumentation_gap",
-                severity_range="high",
-                personas_affected=["a", "b", "c"],
-                description=".",
-                proposed_fix=".",
-                implementation_approach=".",
-                estimated_effort="S",
-                confidence="high",  # the LLM said high; we override
-            ),
-        ],
-    )
-    demoted = demote_low_confidence_patterns(spec, reports=[])
-    assert demoted.patterns[0].confidence == "low"
-
-
-def test_demote_demotes_when_majority_of_findings_are_low_confidence():
-    """Rule 2: if more than half of the per-persona friction_events that
-    contribute to a pattern (matched on signal_type) carry confidence=low,
-    the pattern itself is demoted."""
-    from personalab.core.synthesizer import demote_low_confidence_patterns
-
-    spec = PolishSpec(
-        overall_summary=".",
-        patterns=[
-            FrictionPattern(
-                title="Dead /context",
-                signal_type="empty_state",
-                severity_range="high",
-                personas_affected=["alpha", "beta", "gamma"],
-                description=".",
-                proposed_fix=".",
-                implementation_approach=".",
-                estimated_effort="M",
-                confidence="high",
-            ),
-        ],
-    )
-    reports = [
-        {"persona_id": "alpha", "report": {"friction_events": [
-            {"signal_type": "empty_state", "confidence": "low"},
-        ]}},
-        {"persona_id": "beta", "report": {"friction_events": [
-            {"signal_type": "empty_state", "confidence": "low"},
-        ]}},
-        {"persona_id": "gamma", "report": {"friction_events": [
-            {"signal_type": "empty_state", "confidence": "high"},
-        ]}},
-    ]
-    demoted = demote_low_confidence_patterns(spec, reports)
-    # 2 of 3 contributing events are low → majority → demote.
-    assert demoted.patterns[0].confidence == "low"
-
-
-def test_demote_leaves_high_confidence_alone_when_findings_are_high():
-    """Negative case: when contributing findings are mostly high-confidence,
-    don't touch the LLM's setting."""
-    from personalab.core.synthesizer import demote_low_confidence_patterns
-
-    spec = PolishSpec(
-        overall_summary=".",
-        patterns=[
-            FrictionPattern(
-                title="Real timeout",
-                signal_type="slow_load",
-                severity_range="high",
-                personas_affected=["alpha", "beta"],
-                description=".",
-                proposed_fix=".",
-                implementation_approach=".",
-                estimated_effort="L",
-                confidence="high",
-            ),
-        ],
-    )
-    reports = [
-        {"persona_id": "alpha", "report": {"friction_events": [
-            {"signal_type": "slow_load", "confidence": "high"},
-        ]}},
-        {"persona_id": "beta", "report": {"friction_events": [
-            {"signal_type": "slow_load", "confidence": "high"},
-        ]}},
-    ]
-    demoted = demote_low_confidence_patterns(spec, reports)
-    assert demoted.patterns[0].confidence == "high"
-
-
-def test_demote_handles_findings_without_explicit_confidence_field():
-    """Backward compat: old reports stored before the confidence field
-    existed default to 'high' (per FrictionEvent's default). The demoter
-    must treat absence-of-confidence as 'high', not as low."""
-    from personalab.core.synthesizer import demote_low_confidence_patterns
-
-    spec = PolishSpec(
-        overall_summary=".",
-        patterns=[
-            FrictionPattern(
-                title="x", signal_type="navigation", severity_range="medium",
-                personas_affected=["alpha"], description=".",
-                proposed_fix=".", implementation_approach=".",
-                estimated_effort="S", confidence="high",
-            ),
-        ],
-    )
-    reports = [
-        {"persona_id": "alpha", "report": {"friction_events": [
-            # No 'confidence' key at all — old format.
-            {"signal_type": "navigation"},
-        ]}},
-    ]
-    demoted = demote_low_confidence_patterns(spec, reports)
-    assert demoted.patterns[0].confidence == "high"
-
-
-def test_demote_ignores_patterns_with_no_matching_contributing_events():
-    """Edge case: if a pattern's personas_affected list refers to personas
-    whose reports don't contain any matching signal_type events (e.g.,
-    LLM aggregated under a different label), the demoter must not crash
-    and must not change anything."""
-    from personalab.core.synthesizer import demote_low_confidence_patterns
-
-    spec = PolishSpec(
-        overall_summary=".",
-        patterns=[
-            FrictionPattern(
-                title="x", signal_type="data_density", severity_range="medium",
-                personas_affected=["alpha"], description=".",
-                proposed_fix=".", implementation_approach=".",
-                estimated_effort="M", confidence="medium",
-            ),
-        ],
-    )
-    # alpha's report has no data_density events at all.
-    reports = [
-        {"persona_id": "alpha", "report": {"friction_events": [
-            {"signal_type": "scoring_opacity", "confidence": "high"},
-        ]}},
-    ]
-    demoted = demote_low_confidence_patterns(spec, reports)
-    assert demoted.patterns[0].confidence == "medium"  # untouched
+# ─── Synthesizer post-processing surface (rework: prompt-only) ───────────────
+# The previous build had two post-processing layers (the regex re-prompt
+# fallback and the confidence demoter). Both were removed in the
+# personalab/rework branch — Pass-2 verified neither fired on Forge or
+# careerops, and the confidence rules are now MANDATORY in the system prompt.
+# The tests below assert the new behavior: the model's output passes through
+# without post-processing.
 
 
 def test_synth_system_prompt_instructs_on_confidence():
@@ -541,146 +396,92 @@ def test_synth_system_prompt_instructs_on_confidence():
     assert "Do not pad" in prompt
 
 
-# ─── _summary_references_groups detection ───────────────────────────────
-
-def test_summary_references_groups_detects_prose_with_groups():
-    """Summary that names multiple pattern groups should trigger."""
-    summary = (
-        "Next polish round should focus on three pattern clusters: "
-        "first group is scoring visibility, second group is dead-end "
-        "surfaces, third group is performance."
-    )
-    assert _summary_references_groups(summary) is True
+# ─── Rework guarantees: no post-processing of model output ──────────────
 
 
-def test_summary_references_groups_ignores_sparse_mentions():
-    """A summary that says 'pattern' once should NOT trigger."""
-    assert _summary_references_groups("One scoring pattern was found.") is False
+def test_synth_system_prompt_includes_mandatory_confidence_rules():
+    """The prompt must encode the confidence rules as MANDATORY/HARD so the
+    model assigns confidence correctly without post-hoc demotion."""
+    cfg = _app_config()
+    prompt = _build_synth_system_prompt(cfg)
+    # Strong language is intentional: the post-hoc demoter is gone.
+    assert "MANDATORY" in prompt
+    assert "MUST" in prompt
+    # The three rules that used to live in demote_low_confidence_patterns
+    # now have to live in the prompt itself.
+    assert "instrumentation_gap" in prompt
+    assert "STRICT MAJORITY" in prompt or "strict majority" in prompt.lower()
+    assert "one root cause" in prompt.lower()
 
 
-def test_summary_references_groups_empty():
-    assert _summary_references_groups("") is False
-    assert _summary_references_groups(None) is False
-
-
-# ─── Re-prompt fallback (Phase C) ──────────────────────────────────────
-
-def _prose_only_summary() -> str:
-    return (
-        "Next polish round should focus on three pattern clusters: "
-        "first group is scoring visibility (patterns around score "
-        "opacity), second group is dead-end surfaces (patterns on "
-        "/context and /today), third group is performance (patterns "
-        "around slow load)."
-    )
-
-
-def _recovered_pattern() -> FrictionPattern:
-    return FrictionPattern(
-        title="Scoring visibility",
-        signal_type="scoring_opacity",
-        severity_range="medium → high",
-        personas_affected=["senior-gtm-eng-nyc"],
-        description="Score chip has no reason.",
-        proposed_fix="Add reason chip.",
-        implementation_approach="PipelineTable.tsx",
-        estimated_effort="S",
-    )
-
-
-def test_reprompt_triggers_when_prose_only_and_recovers(tmp_path):
-    """When the first call returns 0 patterns but a group-rich summary,
-    the synthesizer should make a second call and use its patterns."""
+def test_synthesize_passes_model_confidence_through_unchanged(tmp_path):
+    """The synthesizer no longer post-processes confidence. Whatever the
+    model returns is what the user sees — including the boundary cases the
+    old demoter would have caught (instrumentation_gap=high, majority-low).
+    This is intentional: the rules now live in the prompt, and the model
+    is trusted to apply them. If it doesn't, the prompt needs strengthening,
+    not a post-hoc patch."""
     reports_dir = tmp_path / "reports"
     reports_dir.mkdir()
     (reports_dir / "alpha-20260517T080000Z.json").write_text(
-        json.dumps(_make_report("alpha", signal_types=["scoring_opacity"]))
+        json.dumps(_make_report("alpha", signal_types=["empty_state"]))
     )
 
-    # First call: prose-only (0 patterns, group-rich summary).
-    # Second call: structured patterns recovered.
-    first_response = PolishSpec(
-        overall_summary=_prose_only_summary(),
-        patterns=[],
-    )
-    second_response = PolishSpec(
-        overall_summary="Recovered.",
-        patterns=[_recovered_pattern()],
-    )
-    fake = _FakeMessagesSequence([first_response, second_response])
-
-    s = Synthesizer(
-        app_config=_app_config(),
-        reports_dir=reports_dir,
-        synthesis_dir=tmp_path / "synth",
-        client=_FakeClient(fake),
-    )
-    result = s.synthesize()
-
-    # Two API calls made.
-    assert len(fake.calls) == 2
-    # Second call's user message references the summary.
-    assert "scoring visibility" in fake.calls[1]["messages"][0]["content"].lower()
-    # Result uses recovered patterns + original summary.
-    assert result["pattern_count"] == 1
-    assert result["reprompted"] is True
-    # Markdown file documents the re-prompt.
-    md = Path(result["spec_md"]).read_text()
-    assert "re-prompt fallback" in md
-    # Original summary preserved (not replaced by second call's summary).
-    assert "three pattern clusters" in md
-
-
-def test_reprompt_double_failure_proceeds_with_empty(tmp_path):
-    """When both calls return 0 patterns, the synthesizer should not crash
-    and should write a valid (empty) spec."""
-    reports_dir = tmp_path / "reports"
-    reports_dir.mkdir()
-    (reports_dir / "alpha-20260517T080000Z.json").write_text(
-        json.dumps(_make_report("alpha", signal_types=["navigation"]))
-    )
-
-    first_response = PolishSpec(
-        overall_summary=_prose_only_summary(),
-        patterns=[],
-    )
-    second_response = PolishSpec(
-        overall_summary="Still nothing.",
-        patterns=[],
-    )
-    fake = _FakeMessagesSequence([first_response, second_response])
-
-    s = Synthesizer(
-        app_config=_app_config(),
-        reports_dir=reports_dir,
-        synthesis_dir=tmp_path / "synth",
-        client=_FakeClient(fake),
-    )
-    result = s.synthesize()
-
-    assert len(fake.calls) == 2
-    assert result["pattern_count"] == 0
-    assert result["reprompted"] is False  # didn't successfully recover
-    # Still writes valid output files.
-    assert Path(result["spec_md"]).exists()
-    assert Path(result["spec_json"]).exists()
-
-
-def test_reprompt_not_triggered_for_non_group_empty_spec(tmp_path):
-    """When 0 patterns AND the summary doesn't reference groups,
-    no re-prompt should happen (legitimately empty result)."""
-    reports_dir = tmp_path / "reports"
-    reports_dir.mkdir()
-    (reports_dir / "alpha-20260517T080000Z.json").write_text(
-        json.dumps(_make_report("alpha", signal_types=["navigation"]))
-    )
-
+    # Construct an output the OLD demoter would have demoted:
+    # instrumentation_gap pattern marked confidence=high.
     spec = PolishSpec(
-        overall_summary="No significant friction found across personas.",
+        overall_summary="Test.",
+        patterns=[
+            FrictionPattern(
+                title="Would-have-been-demoted",
+                signal_type="instrumentation_gap",
+                severity_range="high",
+                personas_affected=["alpha"],
+                description="Selector probe didn't match.",
+                proposed_fix="Verify selectors.",
+                implementation_approach="qa/app.yaml",
+                estimated_effort="S",
+                confidence="high",  # demoter used to force this to "low"
+            ),
+        ],
+    )
+    fake = _FakeMessages(parsed_output=spec)
+    s = Synthesizer(
+        app_config=_app_config(),
+        reports_dir=reports_dir,
+        synthesis_dir=tmp_path / "synth",
+        client=_FakeClient(fake),
+    )
+    result = s.synthesize()
+
+    # Confidence passed through unchanged.
+    spec_json = json.loads(Path(result["spec_json"]).read_text())
+    assert spec_json["patterns"][0]["confidence"] == "high"
+    # Return dict has no 'reprompted' key (also removed).
+    assert "reprompted" not in result
+
+
+def test_synthesize_makes_exactly_one_api_call_even_when_empty(tmp_path):
+    """No more re-prompt fallback: even if the model returns an empty spec
+    with a prose summary that mentions 'three clusters', the synthesizer
+    should NOT make a second API call. Pass-2 verified the fallback never
+    fired on Forge or careerops; the path is gone."""
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    (reports_dir / "alpha-20260517T080000Z.json").write_text(
+        json.dumps(_make_report("alpha", signal_types=["navigation"]))
+    )
+
+    # Construct prose-only output that the OLD fallback would have re-prompted on.
+    spec = PolishSpec(
+        overall_summary=(
+            "Next polish round should focus on three pattern clusters: "
+            "first group is scoring, second group is empty states, "
+            "third group is performance."
+        ),
         patterns=[],
     )
     fake = _FakeMessages(parsed_output=spec)
-
     s = Synthesizer(
         app_config=_app_config(),
         reports_dir=reports_dir,
@@ -689,46 +490,10 @@ def test_reprompt_not_triggered_for_non_group_empty_spec(tmp_path):
     )
     result = s.synthesize()
 
-    # Only one call — no re-prompt.
-    assert len(fake.calls) == 1
+    assert len(fake.calls) == 1  # only one call — no re-prompt
     assert result["pattern_count"] == 0
-    assert result["reprompted"] is False
-
-
-def test_reprompt_api_exception_does_not_crash(tmp_path):
-    """If the re-prompt call raises, the synthesizer should log and
-    continue with the empty spec rather than crashing."""
-    reports_dir = tmp_path / "reports"
-    reports_dir.mkdir()
-    (reports_dir / "alpha-20260517T080000Z.json").write_text(
-        json.dumps(_make_report("alpha", signal_types=["navigation"]))
-    )
-
-    class _ExplodingMessages:
-        def __init__(self):
-            self.calls: list[dict] = []
-            self._call_count = 0
-        def parse(self, **kwargs):
-            self.calls.append(kwargs)
-            self._call_count += 1
-            if self._call_count == 1:
-                # First call succeeds with prose-only.
-                return _FakeResponse(
-                    PolishSpec(overall_summary=_prose_only_summary(), patterns=[]),
-                    _FakeUsage(),
-                )
-            # Second call explodes.
-            raise RuntimeError("API connection lost")
-
-    fake = _ExplodingMessages()
-    s = Synthesizer(
-        app_config=_app_config(),
-        reports_dir=reports_dir,
-        synthesis_dir=tmp_path / "synth",
-        client=_FakeClient(fake),
-    )
-    result = s.synthesize()
-
-    assert len(fake.calls) == 2
-    assert result["pattern_count"] == 0
-    assert result["reprompted"] is False
+    # Markdown does NOT carry the "re-prompt fallback" warning anymore.
+    md = Path(result["spec_md"]).read_text()
+    assert "re-prompt fallback" not in md
+    # 'reprompted' is no longer a returned field.
+    assert "reprompted" not in result

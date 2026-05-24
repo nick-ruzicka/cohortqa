@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Done — MyTodos</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 40px auto; max-width: 640px; color: #222; }
+    h1 { font-size: 22px; margin-bottom: 24px; }
+    ul { list-style: none; padding: 0; }
+    li { padding: 12px 0; border-bottom: 1px solid #eee; text-decoration: line-through; color: #999; }
+  </style>
+</head>
+<body>
+  <h1>Done</h1>
+  <!--
+    INTENTIONAL FRICTION:
+    - This page is a dead-end. No "Back to active todos" link, no
+      "Restore" affordance per completed item, no navigation home.
+      Returning-user persona is supposed to flag this (broken muscle
+      memory: they expect a back link after every detour). Wanderer
+      persona should also flag it (dead-end + no recovery path =
+      empty_state-ish).
+  -->
+  <ul>
+    <li>Send weekly investor update</li>
+    <li>Approve the Helm chart PR</li>
+  </ul>
+</body>
+</html>

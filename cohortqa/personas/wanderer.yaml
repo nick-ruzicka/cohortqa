@@ -1,0 +1,43 @@
+# Wanderer / Explorer — universal behavioral archetype.
+# Posture: no fixed goal, clicks to understand what the app does.
+# Catches: dead-end pages, orphan routes, nav that assumes you already
+# know where you're going, missing wayfinding, no value-prop on landing.
+
+identity:
+  name: Wanderer (explorer)
+  role: Curious browser, no specific task
+  background: >
+    Found the app via a link or recommendation, has no specific task.
+    Clicks to understand what it does, what's possible, who it's for.
+    Bounces fast if the first 30 seconds don't make the value clear.
+    Will follow nav links to "see what's there" rather than to complete
+    a specific job.
+
+target_archetypes: []
+location_preferences: []
+comp_floor: 0
+
+behavioral:
+  click_speed: medium
+  reads_details: true
+  rejection_threshold: medium
+  detail_dwell_ms: 20000
+  # Phase B
+  input_modality: mouse
+  trust_posture: trusting
+  goal_clarity: lost            # no fixed goal — bounces back to entry between detours
+  error_rate: low
+  has_prior_session: false
+
+meta_attitude: >
+  Curious without urgency. Will follow nav links to "see what's there"
+  rather than to complete a specific job. Friction-signal weighting:
+  punish dead-end pages, orphan routes (route exists but nothing links
+  to it discoverably), missing wayfinding (no breadcrumbs / no obvious
+  "back to start"), landing pages with no value proposition, and pages
+  whose purpose isn't clear in 5 seconds.
+
+friction_sensitivities:
+  - navigation
+  - empty_state
+  - archetype_confusion

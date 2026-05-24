@@ -48,7 +48,16 @@ from .behavior import (
     archetype_engagement,
     click_delay_ms,
     detail_dwell_ms,
+    error_rate,
+    goal_clarity,
+    has_prior_session,
+    input_modality,
     is_protected_action,
+    routes_for_persona,
+    should_double_click_after,
+    should_go_back_after,
+    trust_filters_action,
+    trust_posture,
 )
 
 
@@ -153,6 +162,14 @@ class PersonaRunner:
             self.runs_dir = Path(app_config["runs_dir"])
 
         self.events: list[SessionEvent] = []
+        # Phase C: session-wide action counter. Drives error-sim schedules
+        # (should_double_click_after, should_go_back_after) so personas that
+        # take few actions per route still hit the periodic thresholds across
+        # the whole session. Phase B used a per-route enumerate index which
+        # reset to 0 at each route — meaning back-button-sim never fired for
+        # personas with 1-2 actions per route (verified empirically on
+        # Forge + chariot). Session-wide makes the threshold reachable.
+        self._session_action_index: int = 0
         # Console errors are stored as structured dicts now:
         #   {"type": "error"|"warning", "text": str, "route": str | None}
         # The route field is whichever path was active when the error fired
@@ -234,7 +251,13 @@ class PersonaRunner:
                     }),
                 )
 
-                for route in self.app_config["routes"]:
+                # Phase B: route order is persona-dependent. has_prior_session
+                # reverses the order; goal_clarity 'clear' truncates, 'lost'
+                # bounces back to entry between visits. Defaults yield Phase A
+                # behavior (full ordered list).
+                for route in routes_for_persona(
+                    self.persona, self.app_config["routes"]
+                ):
                     await self._visit_route(page, route)
 
                 await context.close()
@@ -359,12 +382,50 @@ class PersonaRunner:
                 ),
             )
 
+        # Phase C: trust-posture pre-pass. Record refusals for any DECLARED
+        # route action whose side_effects advertise data-asks/signup/persist
+        # that the persona's trust posture would refuse. Runs BEFORE
+        # chooses_action so refusals are visible even for actions chooses_action
+        # would have excluded for behavioral reasons (e.g. a `run_discovery`
+        # action with category=`other` is never chosen by any persona — but
+        # paranoid personas would still REFUSE it explicitly, and that refusal
+        # is a real trace signal the analyzer/synthesizer can use.) The Phase B
+        # inline check inside the dispatch loop ran AFTER chooses_action had
+        # already filtered the action out, making paranoid posture invisible
+        # in the trace for `other`-categorized actions.
+        refused_by_trust: set[str] = set()
+        if trust_posture(self.persona) != "trusting":
+            for declared_action_name in route.get("actions", []) or []:
+                try:
+                    declared_spec = _action_by_name(
+                        self.app_config["actions"], declared_action_name
+                    )
+                except StopIteration:
+                    continue
+                if trust_filters_action(self.persona, declared_spec):
+                    self._record(
+                        event_type="reasoning",
+                        route=route["path"],
+                        action=declared_action_name,
+                        selector=declared_spec.get("selector"),
+                        reasoning=(
+                            f"Persona ({trust_posture(self.persona)} trust) refuses "
+                            f"{declared_action_name!r}: side_effects "
+                            f"{declared_spec.get('side_effects')!r} advertise a "
+                            "trust-relevant intent (asks/signup/persists). "
+                            "Phase C pre-pass — recorded before chooses_action filter."
+                        ),
+                    )
+                    refused_by_trust.add(declared_action_name)
+
+        # Drop trust-refused actions from the dispatch list. They're already
+        # logged as reasoning events; we don't want to click them.
+        actually_take = [a for a in actually_take if a not in refused_by_trust]
+
         for action_name in actually_take:
             action_spec = _action_by_name(self.app_config["actions"], action_name)
 
-            # Protected actions: log intent, never click. PersonaLab must
-            # not mutate applications.md or other user-owned files even if
-            # the page exposes the button. See behavior.is_protected_action.
+            # Protected actions: log intent, never click.
             if is_protected_action(action_spec):
                 self._record(
                     event_type="reasoning",
@@ -381,6 +442,63 @@ class PersonaRunner:
 
             await self._take_action(page, route, action_spec)
             await page.wait_for_timeout(click_delay_ms(self.persona))
+
+            # Phase B/C: error simulation. Error-prone personas occasionally
+            # double-click; lost/error-prone personas occasionally hit
+            # browser back. Deterministic on the SESSION-wide action index
+            # (Phase C change — was per-route in Phase B, which meant
+            # back-button-sim never reached its `>0 AND %3==0` / `%4==0`
+            # thresholds for personas taking 1-2 actions per route).
+            current_index = self._session_action_index
+            if should_double_click_after(self.persona, current_index):
+                try:
+                    locator = page.locator(action_spec["selector"]).first
+                    await locator.click(timeout=1500)
+                    self._record(
+                        event_type="action",
+                        route=route["path"],
+                        action=action_name,
+                        selector=action_spec["selector"],
+                        reasoning=(
+                            f"Phase-B error simulation: error_rate="
+                            f"{error_rate(self.persona)} → double-click "
+                            f"(session-index={current_index})."
+                        ),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    self._record(
+                        event_type="reasoning",
+                        route=route["path"],
+                        action=action_name,
+                        reasoning=f"Double-click simulation failed: {exc!r}",
+                    )
+
+            if should_go_back_after(self.persona, current_index):
+                try:
+                    await page.go_back(timeout=2000, wait_until="domcontentloaded")
+                    self._record(
+                        event_type="nav",
+                        route=route["path"],
+                        reasoning=(
+                            f"Phase-B back-button simulation: "
+                            f"goal_clarity={goal_clarity(self.persona)}, "
+                            f"error_rate={error_rate(self.persona)} "
+                            f"(session-index={current_index})."
+                        ),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    self._record(
+                        event_type="reasoning",
+                        route=route["path"],
+                        reasoning=f"Back-button simulation failed: {exc!r}",
+                    )
+
+            # Phase C: increment the session-wide counter AFTER the action
+            # + its error-sim post-block. Failed-to-dispatch actions (which
+            # go through the protected-action `continue` path above) do NOT
+            # advance the counter — keeps replay determinism on per-persona
+            # action-count, not declared-action-count.
+            self._session_action_index += 1
 
             # Detail-reading dwell — if this action looks like an expansion,
             # the persona pauses to read.
@@ -508,8 +626,29 @@ class PersonaRunner:
             (se or "").startswith("navigates_to:")
             for se in (action.get("side_effects") or [])
         )
+        # Phase B: input modality dispatch. keyboard personas focus the
+        # locator and press Enter; touch personas use locator.tap; mouse
+        # personas use locator.click (Phase A default). Real Playwright
+        # trace divergence — keyboard runs emit FocusEvent + KeyboardEvent;
+        # mouse runs emit MouseEvent. Same selector, different physical
+        # interaction.
+        modality = input_modality(self.persona)
         try:
             locator = page.locator(selector).first
+
+            async def _perform_click() -> None:
+                if modality == "keyboard":
+                    # Focus the target then press Enter — the equivalent of
+                    # tab-stop-then-activate. Achieves the same physical-event
+                    # pattern in the trace without modelling the full tab-order
+                    # traversal.
+                    await locator.focus(timeout=2000)
+                    await page.keyboard.press("Enter")
+                elif modality == "touch":
+                    await locator.tap(timeout=2000)
+                else:
+                    await locator.click(timeout=2000)
+
             if expects_nav:
                 # If the click doesn't actually trigger a nav (e.g. the link
                 # was already on the destination), expect_navigation raises;
@@ -518,11 +657,11 @@ class PersonaRunner:
                     async with page.expect_navigation(
                         wait_until="domcontentloaded", timeout=3000,
                     ):
-                        await locator.click(timeout=2000)
+                        await _perform_click()
                 except Exception:  # noqa: BLE001
-                    await locator.click(timeout=2000)
+                    await _perform_click()
             else:
-                await locator.click(timeout=2000)
+                await _perform_click()
             self._record(
                 event_type="action",
                 route=route["path"],
@@ -532,7 +671,7 @@ class PersonaRunner:
                     f"{action['name']} chosen for "
                     f"{self.persona['behavioral']['click_speed']}-speed "
                     f"{self.persona['behavioral']['rejection_threshold']}-threshold "
-                    "persona."
+                    f"persona via {modality} modality."
                 ),
             )
         except Exception as exc:  # noqa: BLE001
