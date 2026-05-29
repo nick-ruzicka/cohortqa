@@ -1,22 +1,40 @@
 # CohortQA
 
-**Cross-persona UX-friction detector + release-over-release regression harness.**
+> Find UX friction your tests miss — 8 AI personas walk your app, ship a polish spec.
 
 CohortQA walks 8 deterministic personas through your app in headless
-Chromium, surfaces friction each one hits through its own lens, and
-synthesizes the cross-persona patterns — *N of M personas hit this; the
-M−N who didn't shared trait Y; the failure is isolated to X* — into a
-paste-ready polish spec.
+Chromium, surfaces the friction each one hits through its own lens,
+and synthesizes the cross-persona patterns — *N of M personas hit this;
+the M−N who didn't shared trait Y; the failure is isolated to X* —
+into a paste-ready polish spec.
 
-> **Note on framing.** CohortQA is a complement to manual QA and to
-> plain Claude Code browsing — *not* a replacement. Its irreducible
-> value, the one thing those alternatives can't structurally produce,
-> is the cross-persona synthesis above. For solo and small-team
-> builders shipping AI-app surfaces who don't have a dedicated UX
-> researcher and want repeatable per-release friction signal without
-> recruiting users.
+The wedge is **cross-persona subset analysis**. Per-persona heatmaps
+and frequency-weighted reports can't structurally produce that
+sentence; CohortQA is the smallest framework I know of that can.
 
-This README is a draft — voice + final polish pending before publish.
+For solo and small-team builders shipping AI-app surfaces who don't
+have a dedicated UX researcher.
+
+[Quickstart](#quick-start-5-minutes) · [Where it fits in your stack](#where-cohortqa-fits) · [vs plain Claude Code](#what-it-adds-over-plain-claude-code) · [vs related tools](#how-it-differs-from-related-tools) · [Security](#security--injection-aware-by-design)
+
+---
+
+## Where CohortQA fits
+
+CohortQA is **one tool in your release-readiness stack** — not a replacement for any of these.
+
+| You already use | For | CohortQA adds |
+|---|---|---|
+| **E2E tests** (Playwright, Cypress, Selenium) | Asserting business logic is correct | UX-friction signal your assertions don't check — *did the user know what to click?* not *did the click work?* |
+| **Manual QA / usability testing** | Deep human cognitive reads | Repeatable per-release signal at $0.40/run, without recruiting users |
+| **Plain Claude Code + browser** | One-off "is my UX bad?" pass | Cross-persona subset analysis a single explorer structurally can't produce ([numbers](#what-it-adds-over-plain-claude-code)) |
+| **LLM "synthetic users" SaaS** (Uxia, &c.) | Designer / PM workflow on prototypes | Real-browser-on-real-CI dev-first version, open source, MIT |
+| **Conversational validation skills** | Founder ideation pre-product | Post-ship UX signal on actually-running apps |
+| **Pure unit / integration tests** | Per-function correctness | What 8 different first-time users see across the full surface |
+
+**Right framing:** *"the cross-persona UX-pattern detector that runs as a release-over-release regression harness, alongside manual QA and plain Claude Code passes."*
+
+**Wrong framing:** *"the AI QA platform that replaces designers or your test suite."*
 
 ---
 
