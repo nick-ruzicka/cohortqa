@@ -1,15 +1,17 @@
-# PersonaLab rework — make the core trustworthy before publish
+# CohortQA rework — make the core trustworthy before publish
 
-**Date:** 2026-05-23 · **Branch:** `personalab/rework` (off `personalab/forge-pass2`) · **Mode:** correctness only (no new functionality, no new taxonomy) · **Spend:** ~$0.86 of $2.00 budget · **Verdict:** all three fixes verified; full test suite (134 tests) passes; browser interaction confirmed via Playwright trace + cross-validation with PersonaLab's own telemetry.
+_Formerly known as **PersonaLab** — renamed to **CohortQA** at OSS publish (2026-05-28)._
+
+**Date:** 2026-05-23 · **Branch:** `cohortqa/rework` (off `cohortqa/forge-pass2`) · **Mode:** correctness only (no new functionality, no new taxonomy) · **Spend:** ~$0.86 of $2.00 budget · **Verdict:** all three fixes verified; full test suite (134 tests) passes; browser interaction confirmed via Playwright trace + cross-validation with CohortQA's own telemetry.
 
 ## What changed
 
 | Fix | Commit | Files | Net diff |
 |---|---|---|---|
-| FIX 3 — analyzer prompt disambiguates `data_density` (TOO MUCH) from `empty_state` (SPARSE) | `f90dddc` | `personalab/core/analyzer.py` | +12 |
-| FIX 1+2 — synthesizer hardening (delete dead re-prompt fallback + internalize confidence rules) | `403fbdf` | `personalab/core/synthesizer.py`, `personalab/tests/test_synthesizer.py` | +102 / −473 |
+| FIX 3 — analyzer prompt disambiguates `data_density` (TOO MUCH) from `empty_state` (SPARSE) | `f90dddc` | `cohortqa/core/analyzer.py` | +12 |
+| FIX 1+2 — synthesizer hardening (delete dead re-prompt fallback + internalize confidence rules) | `403fbdf` | `cohortqa/core/synthesizer.py`, `cohortqa/tests/test_synthesizer.py` | +102 / −473 |
 
-No new taxonomy types (`nav_error` / `data_inconsistency` stay OUT per Pass-2 YAGNI). No new functionality. No changes outside `personalab/`. Full test suite passes (134/134).
+No new taxonomy types (`nav_error` / `data_inconsistency` stay OUT per Pass-2 YAGNI). No new functionality. No changes outside `cohortqa/`. Full test suite passes (134/134).
 
 ---
 
@@ -73,7 +75,7 @@ Pattern-level confidence distribution (apples-to-apples comparison, both at the 
 
 **Guard-bound clarification:** the user's bounds (low% ≥ 5%, high% ≤ 75%) were stated against Pass-2's **event-level** numbers (62/25/12 Forge, 63/30/7 careerops, from the analyzer). The actual measurement here is **pattern-level** (synthesizer output), where the pre-rework norm was ALREADY 0% low on both apps (4/2/0 Forge, 8/1/0 careerops). So the technically-tripped "low% = 0%" guard is a calibration mismatch, not a regression. The actually-load-bearing test — "did the model drift toward always high?" — answer: no, it drifted toward more medium.
 
-**Test suite:** all 134 personalab tests pass. Tests removed: 7 reprompt-fallback tests + 5 demoter tests (12 obsolete). Tests added: 3 new tests asserting post-rework behavior (mandatory prompt rules, no confidence post-processing, exactly-one API call even when output is empty).
+**Test suite:** all 134 cohortqa tests pass. Tests removed: 7 reprompt-fallback tests + 5 demoter tests (12 obsolete). Tests added: 3 new tests asserting post-rework behavior (mandatory prompt rules, no confidence post-processing, exactly-one API call even when output is empty).
 
 ---
 
@@ -94,15 +96,15 @@ forge-qa/_browser-verify/screenshots/
   - forge-skills.png      (86166 bytes — the 10k-char dense catalog)
 ```
 
-Open with: `playwright show-trace forge-qa/_browser-verify/forge-trace.zip`. Every action, screenshot, network request, and DOM snapshot is in there — full reproducible evidence the same Playwright SDK PersonaLab uses can drive Forge.
+Open with: `playwright show-trace forge-qa/_browser-verify/forge-trace.zip`. Every action, screenshot, network request, and DOM snapshot is in there — full reproducible evidence the same Playwright SDK CohortQA uses can drive Forge.
 
 The headed browser also gave a real Chromium window during the run (visible on the dock, briefly). Combined with the trace it's gold-standard: the trace replays deterministically; the window flash is the eyeball confirmation.
 
-### (c) PersonaLab's own JSONL telemetry cross-checked against the trace
+### (c) CohortQA's own JSONL telemetry cross-checked against the trace
 
-The body_text_length values PersonaLab recorded match the verification script's measurements EXACTLY:
+The body_text_length values CohortQA recorded match the verification script's measurements EXACTLY:
 
-| Route | PersonaLab JSONL | Verification script | Match? |
+| Route | CohortQA JSONL | Verification script | Match? |
 |---|---|---|---|
 | `/` | 68 chars | 197 chars* | ~ |
 | `/publish.html` | (varies) | 509 chars | — |
@@ -121,7 +123,7 @@ Per the rework constraints:
 
 - **No new functionality.** No new modules, no new methods on existing classes (only removals of `_reprompt_for_patterns` and `demote_low_confidence_patterns`).
 - **No new taxonomy types.** `nav_error` and `data_inconsistency` stay OUT per Pass-2 YAGNI. The existing 9 friction types are unchanged.
-- **No changes outside `personalab/`.** The scoring engine (`scripts/lib/`), dashboard-web, and qa/ config are untouched.
+- **No changes outside `cohortqa/`.** The scoring engine (`scripts/lib/`), dashboard-web, and qa/ config are untouched.
 - **No persona changes**, no scenario changes, no schema changes.
 
 ---
@@ -145,7 +147,7 @@ Comfortable under budget with margin. The cheap-reuse verification approach (re-
 
 ## Operational notes
 
-- Branch: `personalab/rework` (off `personalab/forge-pass2`). No push, no merge.
+- Branch: `cohortqa/rework` (off `cohortqa/forge-pass2`). No push, no merge.
 - Forge was already running locally on `:8090` (PID 97005 from Pass-2). Left running.
 - Browser-verification artifacts in `forge-qa/_browser-verify/` are evidence, not source — NOT committed. Reproduce by re-running the snippet in the verification section above.
 - Rework-verify artifacts in `forge-qa/_rework-verify/` and `qa/_rework-verify/` are similarly evidence; NOT committed.

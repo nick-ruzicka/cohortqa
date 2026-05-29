@@ -1,19 +1,12 @@
-name: PersonaLab CI
+name: CohortQA CI
 
-# Runs the personalab test suite (currently 165 tests) on every push
-# and pull request that touches the framework. Stays out of the way
-# of unrelated careerops changes by filtering paths.
+# Runs the cohortqa test suite (currently 165 tests) on every push and
+# pull request.
 
 on:
   push:
     branches: [main]
-    paths:
-      - "personalab/**"
-      - ".github/workflows/personalab-ci.yml"
   pull_request:
-    paths:
-      - "personalab/**"
-      - ".github/workflows/personalab-ci.yml"
 
 jobs:
   test:
@@ -41,8 +34,8 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install pydantic pyyaml anthropic playwright pytest
 
-      - name: Run personalab tests
-        run: python -m pytest personalab/tests/ -q
+      - name: Run cohortqa tests
+        run: python -m pytest cohortqa/tests/ -q
 
   # Optional lint job — runs ruff if it's configured at the repo root.
   # Skipped gracefully if no ruff config is present.
@@ -56,4 +49,4 @@ jobs:
       - name: Install ruff
         run: python -m pip install ruff
       - name: Ruff (allow no-config soft-fail)
-        run: ruff check personalab/ || echo "ruff returned non-zero — review separately"
+        run: ruff check cohortqa/ || echo "ruff returned non-zero — review separately"

@@ -20,7 +20,7 @@ taxonomy block (first call writes, next five read at ~0.1× price).
 
 API + model defaults come from the claude-api skill: Opus 4.7, adaptive
 thinking, no sampling params, structured output via ``messages.parse``.
-The model is overridable via the PERSONALAB_ANTHROPIC_MODEL env var if
+The model is overridable via the COHORTQA_ANTHROPIC_MODEL env var if
 the user explicitly wants Sonnet/Haiku for cost.
 """
 
@@ -41,24 +41,24 @@ from .runner import read_session
 
 # Two model knobs:
 #
-#   PERSONALAB_ANTHROPIC_MODEL    — global default, used as a fallback for
+#   COHORTQA_ANTHROPIC_MODEL    — global default, used as a fallback for
 #                                   both stages. Defaults to claude-opus-4-7.
-#   PERSONALAB_ANALYZER_MODEL     — analyzer stage only. Labeling individual
+#   COHORTQA_ANALYZER_MODEL     — analyzer stage only. Labeling individual
 #                                   session events is structurally simpler
 #                                   than cross-persona synthesis, so a cheap
 #                                   model (e.g. claude-haiku-4-5-20251001)
 #                                   works here. Falls back to ANTHROPIC_MODEL.
-#   PERSONALAB_SYNTHESIZER_MODEL  — synthesizer stage only. Cross-persona
+#   COHORTQA_SYNTHESIZER_MODEL  — synthesizer stage only. Cross-persona
 #                                   pattern detection is the moat; keep
 #                                   the strong model here. Falls back to
 #                                   ANTHROPIC_MODEL.
 #
 # Recommended for 8-persona runs: ANALYZER=haiku, SYNTHESIZER=opus. ~3x
 # cheaper than running both on opus, with no measured quality regression
-# on labeling tasks (verified in personalab/depth pass against Forge —
+# on labeling tasks (verified in cohortqa/depth pass against Forge —
 # see docs/audits/2026-05-23-personalab-depth-design.md).
-_GLOBAL_DEFAULT_MODEL = os.environ.get("PERSONALAB_ANTHROPIC_MODEL", "claude-opus-4-7")
-DEFAULT_MODEL = os.environ.get("PERSONALAB_ANALYZER_MODEL", _GLOBAL_DEFAULT_MODEL)
+_GLOBAL_DEFAULT_MODEL = os.environ.get("COHORTQA_ANTHROPIC_MODEL", "claude-opus-4-7")
+DEFAULT_MODEL = os.environ.get("COHORTQA_ANALYZER_MODEL", _GLOBAL_DEFAULT_MODEL)
 DEFAULT_MAX_TOKENS = 8000
 
 
@@ -177,7 +177,7 @@ def _build_friction_taxonomy(app_config: dict[str, Any]) -> str:
     above the cache_control breakpoint."""
     lines = [
         "You are a UX research analyst reviewing a session log captured by "
-        "PersonaLab, a multi-persona QA framework. Your job: extract the "
+        "CohortQA, a multi-persona QA framework. Your job: extract the "
         "moments where the app failed the persona's mental model, and "
         "classify each by the app's declared friction signal taxonomy.",
         "",

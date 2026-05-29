@@ -1,6 +1,8 @@
-# PersonaLab depth — universal personas + cost architecture + sharper cross-persona moat
+# CohortQA depth — universal personas + cost architecture + sharper cross-persona moat
 
-**Date:** 2026-05-23 · **Branch:** `personalab/depth` (off `personalab/rework`) · **Mode:** design + working prototype, validated on Forge · **Spend:** ~$1.50 of $3.00 budget · **Verdict:** all three parts shipped + empirically validated. The 8-persona depth run on Forge produced 5 genuine cross-persona patterns vs Pass-2's 2-3, surfaced a NEW finding (`role-picker-modal` pointer-event trap) that neither Pass-2 nor plain Claude Code caught, and ran at 53% the cost of a naive same-quality run.
+_Formerly known as **PersonaLab** — renamed to **CohortQA** at OSS publish (2026-05-28)._
+
+**Date:** 2026-05-23 · **Branch:** `cohortqa/depth` (off `cohortqa/rework`) · **Mode:** design + working prototype, validated on Forge · **Spend:** ~$1.50 of $3.00 budget · **Verdict:** all three parts shipped + empirically validated. The 8-persona depth run on Forge produced 5 genuine cross-persona patterns vs Pass-2's 2-3, surfaced a NEW finding (`role-picker-modal` pointer-event trap) that neither Pass-2 nor plain Claude Code caught, and ran at 53% the cost of a naive same-quality run.
 
 ---
 
@@ -29,7 +31,7 @@ That cross-persona headline is the moat in legible form. A single confused user 
 
 ## PART 1 — Universal persona library
 
-### The 8 archetypes (shipped as `personalab/personas/*.yaml`)
+### The 8 archetypes (shipped as `cohortqa/personas/*.yaml`)
 
 | Persona | Click speed | Reads | Threshold | Dwell ms | Posture |
 |---|---|:---:|---|---:|---|
@@ -51,7 +53,7 @@ Each persona uses the existing required schema fields but with domain-agnostic c
 - `meta_attitude` and `friction_sensitivities` carry the load-bearing differentiation. The analyzer is told to weight findings by these; that's the lens.
 
 A user adopting these for their own app:
-1. Copy `personalab/personas/*.yaml` to their app's `qa/personas/` (or `<app>-qa/personas-universal/`).
+1. Copy `cohortqa/personas/*.yaml` to their app's `qa/personas/` (or `<app>-qa/personas-universal/`).
 2. Optionally tweak `identity.background` to make the persona feel like a real user of their specific app (the analyzer treats this as flavor text).
 3. Run as-is.
 
@@ -90,7 +92,7 @@ The depth-pass design is layered: **deterministic runner gives ~5 navigation tra
 
 ### A. Capture-once-replay-many — already proven, now formalized
 
-The personalab/rework pass demonstrated this is real: FIX 3 was verified by re-running the analyzer on existing Forge JSONLs (~$0.20) instead of fresh end-to-end runs (~$0.40-1.00). Same for FIX 1+2 verified via synthesizer-only re-runs on existing reports.
+The cohortqa/rework pass demonstrated this is real: FIX 3 was verified by re-running the analyzer on existing Forge JSONLs (~$0.20) instead of fresh end-to-end runs (~$0.40-1.00). Same for FIX 1+2 verified via synthesizer-only re-runs on existing reports.
 
 Recommended dev loop (documented for future contributors):
 1. **First run:** full end-to-end (browser + analyzer + synth) to capture session JSONLs to disk.
@@ -105,15 +107,15 @@ The orchestrator already exposes `--skip-analysis` and `--skip-synthesis`. The S
 **Code change** (`analyzer.py`, `synthesizer.py`): two new env vars, with backward compat:
 
 ```
-PERSONALAB_ANTHROPIC_MODEL    # global default (existing, unchanged default = claude-opus-4-7)
-PERSONALAB_ANALYZER_MODEL     # analyzer stage only; falls back to ANTHROPIC_MODEL
-PERSONALAB_SYNTHESIZER_MODEL  # synthesizer stage only; falls back to ANTHROPIC_MODEL
+COHORTQA_ANTHROPIC_MODEL    # global default (existing, unchanged default = claude-opus-4-7)
+COHORTQA_ANALYZER_MODEL     # analyzer stage only; falls back to ANTHROPIC_MODEL
+COHORTQA_SYNTHESIZER_MODEL  # synthesizer stage only; falls back to ANTHROPIC_MODEL
 ```
 
 **Recommended config for 8-persona runs:**
 ```
-PERSONALAB_ANALYZER_MODEL=claude-haiku-4-5-20251001
-PERSONALAB_SYNTHESIZER_MODEL=claude-opus-4-7
+COHORTQA_ANALYZER_MODEL=claude-haiku-4-5-20251001
+COHORTQA_SYNTHESIZER_MODEL=claude-opus-4-7
 ```
 
 **Validated empirically:** depth pass ran with this exact split. Cost was 53% of the naive same-quality run; no observable label-quality regression vs Opus on the same telemetry — the FIX-3 sparse/dense disambiguation test passed cleanly on Haiku output too (Haiku correctly labels Forge's 68-char homepage as `empty_state` and `/skills.html`'s 10k-char body as `data_density`).
@@ -186,7 +188,7 @@ The Forge depth run produced:
 
 ### The big new finding (not in Pass-2, not in plain CC)
 
-The role-picker-modal pointer-event trap on Forge's homepage Publish link. Plain Claude Code (Pass-2's baseline, 10 findings) didn't catch it — the single explorer probably navigated by URL or didn't click the nav link. Pass-2 PersonaLab (2 personas) didn't catch it — neither attempted the nav-click path. The DEPTH pass caught it because:
+The role-picker-modal pointer-event trap on Forge's homepage Publish link. Plain Claude Code (Pass-2's baseline, 10 findings) didn't catch it — the single explorer probably navigated by URL or didn't click the nav link. Pass-2 CohortQA (2 personas) didn't catch it — neither attempted the nav-click path. The DEPTH pass caught it because:
 - 4 of 8 personas (cautious-first-timer, keyboard-only, skeptic, wanderer) tried homepage→Publish nav-click.
 - All 4 timed out at 2000ms with the same `pointer events intercepted by role-picker-modal` trace evidence.
 - The synthesizer correctly clustered them into one pattern + correctly isolated the failure to the modal (the 4 who DIDN'T hit it had a different navigation pattern).
@@ -199,15 +201,15 @@ This is the kind of finding the framework exists to surface. The depth pass is w
 
 ### Built this session
 
-- 8 universal personas in `personalab/personas/` (shipped library).
-- Model-split env vars (`PERSONALAB_ANALYZER_MODEL`, `PERSONALAB_SYNTHESIZER_MODEL`) with backward-compat fallback to existing `PERSONALAB_ANTHROPIC_MODEL`.
+- 8 universal personas in `cohortqa/personas/` (shipped library).
+- Model-split env vars (`COHORTQA_ANALYZER_MODEL`, `COHORTQA_SYNTHESIZER_MODEL`) with backward-compat fallback to existing `COHORTQA_ANTHROPIC_MODEL`.
 - `_model_supports_adaptive_thinking()` helper gating the `thinking` kwarg on Opus/Sonnet only.
 - `FrictionPattern.cross_persona_signature` field.
 - `PolishSpec.cross_persona_headline` field.
 - Synthesizer system-prompt rewrite for cross-persona discipline.
 - `render_polish_spec` updates: headline rendered prominently, patterns tagged `🔀 cross-persona` vs `single-explorer-visible`.
 - `forge-qa/app-depth.yaml` + `forge-qa/personas-universal/` for repeatable Forge validation.
-- All 134 existing personalab tests still pass after the changes.
+- All 134 existing cohortqa tests still pass after the changes.
 
 ### Deferred (documented, not built)
 
@@ -252,14 +254,14 @@ Under budget with margin. The bulk of the cost was the one full 8-persona end-to
 
 ## Operational notes
 
-- Branch: `personalab/depth` (off `personalab/rework`). No push, no merge.
-- 134 personalab tests still passing post-changes.
+- Branch: `cohortqa/depth` (off `cohortqa/rework`). No push, no merge.
+- 134 cohortqa tests still passing post-changes.
 - Forge running at `:8090` (user's process, PID 97005, started before any of this session's work). Left running.
-- `forge-qa/_depth/` artifacts are evidence (sessions + reports + synth markdown) — NOT committed; reproducible from `forge-qa/app-depth.yaml` + `forge-qa/personas-universal/` + `PERSONALAB_ANALYZER_MODEL=claude-haiku-4-5-20251001`.
-- The universal personas in `personalab/personas/` are the shipped library; users copy + use them.
+- `forge-qa/_depth/` artifacts are evidence (sessions + reports + synth markdown) — NOT committed; reproducible from `forge-qa/app-depth.yaml` + `forge-qa/personas-universal/` + `COHORTQA_ANALYZER_MODEL=claude-haiku-4-5-20251001`.
+- The universal personas in `cohortqa/personas/` are the shipped library; users copy + use them.
 
 ---
 
 ## TL;DR
 
-The depth pass turns "PersonaLab tuned to my apps" into "anyone points PersonaLab at their app, picks 3-8 of the 8 universal archetypes, gets a rich cross-persona report at ~half the naive cost." The moat is empirically real (5 cross-persona patterns + a new finding neither Pass-2 nor plain Claude Code caught), legibly tagged in the output, and economically viable thanks to the Haiku/Opus split. The shipped library is `personalab/personas/*.yaml`; the model-split is two env vars; the headline is a Pydantic field that surfaces the moat at the top of every polish spec.
+The depth pass turns "CohortQA tuned to my apps" into "anyone points CohortQA at their app, picks 3-8 of the 8 universal archetypes, gets a rich cross-persona report at ~half the naive cost." The moat is empirically real (5 cross-persona patterns + a new finding neither Pass-2 nor plain Claude Code caught), legibly tagged in the output, and economically viable thanks to the Haiku/Opus split. The shipped library is `cohortqa/personas/*.yaml`; the model-split is two env vars; the headline is a Pydantic field that surfaces the moat at the top of every polish spec.

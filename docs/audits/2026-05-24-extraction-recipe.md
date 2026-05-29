@@ -1,8 +1,8 @@
-# PersonaLab fresh-repo extraction — recipe
+# CohortQA fresh-repo extraction — recipe
 
-**Date:** 2026-05-24 · **Source branch:** `personalab/publish` (this branch) · **Mode:** checklist for the next session — concrete commands, not a re-derivation.
+**Date:** 2026-05-24 · **Source branch:** `cohortqa/publish` (this branch) · **Mode:** checklist for the next session — concrete commands, not a re-derivation.
 
-This is the recipe for lifting `personalab/` + the 9 validation audits
+This is the recipe for lifting `cohortqa/` + the 9 validation audits
 out of the careerops monorepo into a fresh standalone repository.
 **Don't run any of this in this session.** This file exists so the
 extraction session has the exact invocations + verification steps.
@@ -11,7 +11,7 @@ extraction session has the exact invocations + verification steps.
 
 ## 0. Open question — repo name (decide before the push)
 
-**The package is currently called `personalab`. That name is likely taken on GitHub and PyPI, and is generic.** Pick a final name before creating the destination repo. Criteria:
+**The package is currently called `cohortqa`. That name is likely taken on GitHub and PyPI, and is generic.** Pick a final name before creating the destination repo. Criteria:
 
 - Pronounceable, one word, available on both `github.com/nick-ruzicka/<name>` and `pypi.org/project/<name>/`.
 - Hints at the moat: cross-persona, friction, UX, or "many users at once."
@@ -25,15 +25,15 @@ Possible directions (not recommendations — Nick's call):
 | Friction-forward | `frictionlab`, `frictionscope`, `uxfriction` |
 | N-personas-forward | `octouser`, `panellab` (8 personas = jury / panel) |
 | Cross-persona-forward | `crosspersona`, `cohortqa` |
-| Keep PersonaLab and live with namespacing | `personalab-ai`, `personalab-qa` |
+| Keep CohortQA and live with namespacing | `personalab-ai`, `personalab-qa` |
 
 **Action for the extraction session:**
 
-1. Pick the name. Update every `name = "personalab"` in `pyproject.toml`, every `import personalab.*` reference, every `python3 -m personalab.core.orchestrator` shell invocation, and every prose mention.
-2. **Decide whether to rename the package directory too** (`personalab/` → `<newname>/`). If yes, add `--path-rename personalab/:<newname>/` to the filter-repo call in step 2.
-3. If keeping the directory as `personalab/` but renaming only the project on PyPI, leave the path-rename out.
+1. Pick the name. Update every `name = "cohortqa"` in `pyproject.toml`, every `import cohortqa.*` reference, every `python3 -m cohortqa.core.orchestrator` shell invocation, and every prose mention.
+2. **Decide whether to rename the package directory too** (`cohortqa/` → `<newname>/`). If yes, add `--path-rename cohortqa/:<newname>/` to the filter-repo call in step 2.
+3. If keeping the directory as `cohortqa/` but renaming only the project on PyPI, leave the path-rename out.
 
-The recipe below assumes you've decided. Substitute `<newname>` everywhere it appears. If you're keeping the directory as `personalab`, the directory-rename steps are no-ops.
+The recipe below assumes you've decided. Substitute `<newname>` everywhere it appears. If you're keeping the directory as `cohortqa`, the directory-rename steps are no-ops.
 
 ---
 
@@ -65,7 +65,7 @@ default (safety feature). Clone a fresh copy first.
 # its history; don't reuse this clone for anything else).
 SRC=/tmp/personalab-extract
 rm -rf "$SRC"
-git clone --no-local --branch personalab/publish \
+git clone --no-local --branch cohortqa/publish \
   https://github.com/nick-ruzicka/nick-career-ops.git "$SRC"
 
 # 2.2 — enter the scratch clone and do the extraction.
@@ -75,7 +75,7 @@ cd "$SRC"
 # Single invocation — filter-repo applies all --path / --path-rename
 # rules together.
 git filter-repo \
-  --path personalab/ \
+  --path cohortqa/ \
   --path .github/workflows/personalab-ci.yml \
   --path docs/audits/2026-05-22-personalab-rereview.md \
   --path docs/audits/2026-05-23-personalab-depth-design.md \
@@ -87,8 +87,8 @@ git filter-repo \
   --path docs/audits/2026-05-24-personalab-prepublish.md \
   --path docs/audits/2026-05-24-personalab-publish-smoke-gates.md \
   --path docs/audits/2026-05-24-extraction-recipe.md \
-  --path-rename personalab/pyproject.toml:pyproject.toml \
-  --path-rename personalab/README.md:README.md \
+  --path-rename cohortqa/pyproject.toml:pyproject.toml \
+  --path-rename cohortqa/README.md:README.md \
   --path-rename .github/workflows/personalab-ci.yml:.github/workflows/ci.yml
 ```
 
@@ -101,9 +101,9 @@ git filter-repo \
 **Result tree should look like:**
 
 ```
-README.md                                  # was personalab/README.md
-pyproject.toml                             # was personalab/pyproject.toml
-personalab/                                # the package — unchanged path
+README.md                                  # was cohortqa/README.md
+pyproject.toml                             # was cohortqa/pyproject.toml
+cohortqa/                                # the package — unchanged path
 ├── __init__.py
 ├── core/
 ├── personas/
@@ -124,10 +124,10 @@ docs/audits/                               # 10 audit docs preserved
 └── 2026-05-24-extraction-recipe.md
 ```
 
-**If renaming the package directory** (only if `<newname>` ≠ `personalab`), add this rename to the filter-repo invocation:
+**If renaming the package directory** (only if `<newname>` ≠ `cohortqa`), add this rename to the filter-repo invocation:
 
 ```bash
-  --path-rename personalab/:<newname>/
+  --path-rename cohortqa/:<newname>/
 ```
 
 ---
@@ -138,7 +138,7 @@ After step 2 the directory tree is right but **two files have stale references t
 
 ### 3.1 — `pyproject.toml` package layout
 
-The file currently has (because it lived inside `personalab/`):
+The file currently has (because it lived inside `cohortqa/`):
 
 ```toml
 packages = [
@@ -149,13 +149,13 @@ packages = [
 package-dir = { "" = "." }
 ```
 
-Now that `pyproject.toml` is at the repo root and `personalab/` (the
+Now that `pyproject.toml` is at the repo root and `cohortqa/` (the
 package) is a subdirectory, change to:
 
 ```toml
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["personalab*"]
+include = ["cohortqa*"]
 ```
 
 Or if renaming the package directory in §2:
@@ -180,7 +180,7 @@ old = '''packages = [
 package-dir = { "" = "." }'''
 new = '''[tool.setuptools.packages.find]
 where = ["."]
-include = ["personalab*"]'''
+include = ["cohortqa*"]'''
 text = text.replace(old, new)
 open("pyproject.toml", "w").write(text)
 PY
@@ -190,16 +190,16 @@ Also update `[project.scripts]` if you renamed the package:
 
 ```toml
 # from:
-personalab = "personalab.core.orchestrator:main"
+cohortqa = "cohortqa.core.orchestrator:main"
 # to (if renamed):
 <newname> = "<newname>.core.orchestrator:main"
 ```
 
 ### 3.2 — `.github/workflows/ci.yml` path filter
 
-The workflow currently filters to `personalab/**` so it doesn't fire
+The workflow currently filters to `cohortqa/**` so it doesn't fire
 on unrelated careerops PRs. In a standalone repo every commit IS
-PersonaLab — the path filter is unnecessary and wrong (it'd miss
+CohortQA — the path filter is unnecessary and wrong (it'd miss
 top-level docs / pyproject changes). Remove it:
 
 ```bash
@@ -209,11 +209,11 @@ old = '''on:
   push:
     branches: [main]
     paths:
-      - "personalab/**"
+      - "cohortqa/**"
       - ".github/workflows/personalab-ci.yml"
   pull_request:
     paths:
-      - "personalab/**"
+      - "cohortqa/**"
       - ".github/workflows/personalab-ci.yml"'''
 new = '''on:
   push:
@@ -227,13 +227,13 @@ PY
 If the package directory was renamed, also fix the pytest invocation:
 
 ```bash
-sed -i.bak 's|personalab/tests/|<newname>/tests/|g' .github/workflows/ci.yml
+sed -i.bak 's|cohortqa/tests/|<newname>/tests/|g' .github/workflows/ci.yml
 rm .github/workflows/ci.yml.bak
 ```
 
 ### 3.3 — README link rewriting
 
-`personalab/README.md` (now at root) has links written for its old location:
+`cohortqa/README.md` (now at root) has links written for its old location:
 
 ```
 ../docs/audits/2026-05-23-personalab-forge-pass2.md   →  docs/audits/2026-05-23-personalab-forge-pass2.md
@@ -242,11 +242,11 @@ rm .github/workflows/ci.yml.bak
 ../docs/audits/2026-05-23-personalab-phase-b.md       →  docs/audits/2026-05-23-personalab-phase-b.md
 ../docs/audits/2026-05-24-personalab-phase-c.md       →  docs/audits/2026-05-24-personalab-phase-c.md
 ../docs/audits/2026-05-24-personalab-publish-smoke-gates.md → docs/audits/2026-05-24-personalab-publish-smoke-gates.md
-core/behavior.py                                       →  personalab/core/behavior.py
-tests/test_injection_resistance.py                    →  personalab/tests/test_injection_resistance.py
-examples/quickstart/                                   →  personalab/examples/quickstart/
+core/behavior.py                                       →  cohortqa/core/behavior.py
+tests/test_injection_resistance.py                    →  cohortqa/tests/test_injection_resistance.py
+examples/quickstart/                                   →  cohortqa/examples/quickstart/
 core/runner.py, core/analyzer.py, core/scenario_runner.py, core/replayer.py, core/synthesizer.py, core/orchestrator.py
-                                                       →  personalab/core/<file>
+                                                       →  cohortqa/core/<file>
 ```
 
 Single sed pass (from the new repo root):
@@ -254,23 +254,23 @@ Single sed pass (from the new repo root):
 ```bash
 sed -i.bak \
   -e 's|\(\]\)(../docs/audits/|\1(docs/audits/|g' \
-  -e 's|\(\]\)(core/|\1(personalab/core/|g' \
-  -e 's|\(\]\)(tests/|\1(personalab/tests/|g' \
-  -e 's|\(\]\)(examples/|\1(personalab/examples/|g' \
+  -e 's|\(\]\)(core/|\1(cohortqa/core/|g' \
+  -e 's|\(\]\)(tests/|\1(cohortqa/tests/|g' \
+  -e 's|\(\]\)(examples/|\1(cohortqa/examples/|g' \
   README.md
 rm README.md.bak
 ```
 
-If renaming the package: substitute `personalab/` → `<newname>/` in the same pass.
+If renaming the package: substitute `cohortqa/` → `<newname>/` in the same pass.
 
-Also fix any `import personalab` or `python3 -m personalab.*` strings if the package directory was renamed:
+Also fix any `import cohortqa` or `python3 -m cohortqa.*` strings if the package directory was renamed:
 
 ```bash
 # Only if renamed:
 sed -i.bak \
-  -e 's|import personalab\.|import <newname>.|g' \
-  -e 's|python3 -m personalab\.|python3 -m <newname>.|g' \
-  -e 's|`personalab\.|`<newname>.|g' \
+  -e 's|import cohortqa\.|import <newname>.|g' \
+  -e 's|python3 -m cohortqa\.|python3 -m <newname>.|g' \
+  -e 's|`cohortqa\.|`<newname>.|g' \
   README.md docs/audits/*.md
 find . -name '*.bak' -delete
 ```
@@ -309,14 +309,14 @@ Run from the new repo root.
 test -f README.md                                  || echo "MISSING: README.md"
 test -f pyproject.toml                             || echo "MISSING: pyproject.toml"
 test -f .github/workflows/ci.yml                   || echo "MISSING: .github/workflows/ci.yml"
-test -d personalab/core                            || echo "MISSING: personalab/core/"
-test -d personalab/personas                        || echo "MISSING: personalab/personas/"
-test -d personalab/schemas                         || echo "MISSING: personalab/schemas/"
-test -d personalab/tests                           || echo "MISSING: personalab/tests/"
-test -d personalab/examples/quickstart             || echo "MISSING: personalab/examples/quickstart/"
-ls personalab/personas/*.yaml | wc -l  # expect 8
-ls personalab/core/*.py | wc -l        # expect 9 (8 modules + __init__.py)
-ls docs/audits/2026-05-2*-personalab-*.md | wc -l  # expect 9
+test -d cohortqa/core                            || echo "MISSING: cohortqa/core/"
+test -d cohortqa/personas                        || echo "MISSING: cohortqa/personas/"
+test -d cohortqa/schemas                         || echo "MISSING: cohortqa/schemas/"
+test -d cohortqa/tests                           || echo "MISSING: cohortqa/tests/"
+test -d cohortqa/examples/quickstart             || echo "MISSING: cohortqa/examples/quickstart/"
+ls cohortqa/personas/*.yaml | wc -l  # expect 8
+ls cohortqa/core/*.py | wc -l        # expect 9 (8 modules + __init__.py)
+ls docs/audits/2026-05-2*-cohortqa-*.md | wc -l  # expect 9
 test -f docs/audits/2026-05-24-extraction-recipe.md || echo "MISSING: this recipe"
 ```
 
@@ -350,7 +350,7 @@ test ! -d dashboard-web                     || echo "FOUND: dashboard-web/"
 test ! -d dashboard                         || echo "FOUND: dashboard/"
 test ! -f portals.yml                       || echo "FOUND: portals.yml"
 
-# Non-personalab audits / work logs
+# Non-cohortqa audits / work logs
 test ! -f docs/audits/2026-05-22-fde-sourcing-plan.md   || echo "FOUND: fde-sourcing-plan"
 test ! -f docs/audits/2026-05-22-extractability.md      || echo "FOUND: extractability"
 test ! -f docs/audits/2026-05-18-codebase-review.md     || echo "FOUND: 2026-05-18 codebase audits"
@@ -369,7 +369,7 @@ test ! -d forge                             || echo "FOUND: forge/ (gitignored r
 
 If any of these fire, the filter-repo `--path` list in step 2 needs
 narrowing OR the source branch had unintended files (rerun from the
-canonical `personalab/publish` tip, not a stale local).
+canonical `cohortqa/publish` tip, not a stale local).
 
 ### 4.3 — Package installs and tests pass
 
@@ -395,7 +395,7 @@ and confirm:
 - Headline and quickstart links resolve.
 - The 5 sections (positioning / vs-plain-Claude / vs-related-tools /
   security / limitations) are present and render correctly.
-- Internal links to `docs/audits/...` and `personalab/...` paths
+- Internal links to `docs/audits/...` and `cohortqa/...` paths
   don't 404 (no `../docs/` left, no bare `core/` left).
 
 ### 4.6 — No secrets in history
@@ -424,7 +424,7 @@ gh repo create nick-ruzicka/<newname> --public \
 # 5.2 — point the local extracted history at it
 cd "$SRC"
 git remote add origin git@github.com:nick-ruzicka/<newname>.git
-git branch -M main                # was personalab/publish
+git branch -M main                # was cohortqa/publish
 git push -u origin main
 ```
 
@@ -454,12 +454,12 @@ You'll need a PyPI account + `~/.pypirc` token. Test on
 - [ ] Add a "Star history" link if you care about social proof
 - [ ] File the first GitHub Issue as "Phase D: 4th-codebase validation
       against a complex app" (the deferred Dispatch test)
-- [ ] Update `personalab/examples/quickstart/README.md` if it has any
+- [ ] Update `cohortqa/examples/quickstart/README.md` if it has any
       references that need to become root-relative
-- [ ] Mark the careerops `personalab/publish` branch as merged-and-
+- [ ] Mark the careerops `cohortqa/publish` branch as merged-and-
       archived (no need to keep it active after the extract works)
-- [ ] If renamed, update the audit docs' "PersonaLab" prose to the
-      new name (or add a heading note: "Formerly known as PersonaLab")
+- [ ] If renamed, update the audit docs' "CohortQA" prose to the
+      new name (or add a heading note: "Formerly known as CohortQA")
 
 ---
 
@@ -489,12 +489,12 @@ deliberately API-call-free so it can be re-run if anything goes wrong.
 
 ## Source state this recipe was written against
 
-- **Branch:** `personalab/publish`
+- **Branch:** `cohortqa/publish`
 - **Tip:** `eb09b64` (publish-prep — README, pyproject.toml, CI, smoke-gate audit)
 - **Off:** `5c8de63` (origin/main)
 - **Tests:** 165 passing
-- **Files in scope:** `personalab/` (entire package), `.github/workflows/personalab-ci.yml`, 9 personalab audits under `docs/audits/`, this recipe.
+- **Files in scope:** `cohortqa/` (entire package), `.github/workflows/personalab-ci.yml`, 9 cohortqa audits under `docs/audits/`, this recipe.
 
-If `personalab/publish` advances before the extraction session, re-read
+If `cohortqa/publish` advances before the extraction session, re-read
 the paths in step 2 against the new tip — adding the new ones if
 they're in scope.

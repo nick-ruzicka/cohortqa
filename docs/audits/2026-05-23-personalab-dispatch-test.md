@@ -1,6 +1,8 @@
-# PersonaLab Dispatch test — Phase 0 STOP
+# CohortQA Dispatch test — Phase 0 STOP
 
-**Date:** 2026-05-23 · **Branch:** `personalab/dispatch-test` (off `personalab/phase-b`) · **Mode:** Phase 0 runnability gate only · **Spend:** ~$0.00 (just GitHub API metadata reads) · **Verdict:** **STOP at Phase 0** — Dispatch can't be spun up locally cheaply enough to justify a 4th-codebase validation pass. The existing 3-codebase validation (Forge + CareerOps + Chariot) is the right stopping point; proceed to publish-prep.
+_Formerly known as **PersonaLab** — renamed to **CohortQA** at OSS publish (2026-05-28)._
+
+**Date:** 2026-05-23 · **Branch:** `cohortqa/dispatch-test` (off `cohortqa/phase-b`) · **Mode:** Phase 0 runnability gate only · **Spend:** ~$0.00 (just GitHub API metadata reads) · **Verdict:** **STOP at Phase 0** — Dispatch can't be spun up locally cheaply enough to justify a 4th-codebase validation pass. The existing 3-codebase validation (Forge + CareerOps + Chariot) is the right stopping point; proceed to publish-prep.
 
 ---
 
@@ -76,12 +78,12 @@ For comparison:
 
 Even after spin-up, the test would be degraded:
 
-1. **Empty pipeline.** With no seed data the pipeline-dashboard surface (the most important navigable area for PersonaLab) would render empty cards. The runner can walk an empty UI (proven on chariot), but the friction findings would be dominated by "empty_state" labels rather than the rich interaction patterns the test is designed to surface.
+1. **Empty pipeline.** With no seed data the pipeline-dashboard surface (the most important navigable area for CohortQA) would render empty cards. The runner can walk an empty UI (proven on chariot), but the friction findings would be dominated by "empty_state" labels rather than the rich interaction patterns the test is designed to surface.
 2. **Broken chat surface.** The "natural language interface powered by Claude" route depends on `ANTHROPIC_API_KEY` having credits + `OPENAI_API_KEY` for embeddings. Missing OpenAI key likely means the chat surface throws on init — the personas couldn't exercise it.
 3. **Asana errors mid-flow.** Any view that pulls Asana tasks would error out if `ASANA_ACCESS_TOKEN` is empty/stub. Personas would file these as broken_link / instrumentation_gap noise.
 4. **Trust-filter test contamination.** The whole point of Dispatch as a 4th-codebase test was to exercise the dormant trust filter (`asks:`/`signup:`/`persists:` side_effects). To do that meaningfully the personas need to encounter real "deal create" / "contact edit" / "send Slack" affordances. Those affordances only render when the underlying tables have data AND the integrations are configured. An empty stubbed instance would let the trust filter fire on protected actions like `create_deal`, but the *broader* trust-relevant surfaces (Asana sync, Slack send, Zapier webhook) wouldn't be in the trace at all.
 
-This is exactly the "requires the full live integration stack to render anything meaningful" case the Phase 0 gate was built to catch. The test could be FORCED to run, but the inputs to PersonaLab would be so degraded that any moat-scaling claim would be argued away by "well, you tested it on a broken Dispatch."
+This is exactly the "requires the full live integration stack to render anything meaningful" case the Phase 0 gate was built to catch. The test could be FORCED to run, but the inputs to CohortQA would be so degraded that any moat-scaling claim would be argued away by "well, you tested it on a broken Dispatch."
 
 ---
 
@@ -101,7 +103,7 @@ That's the right move. The existing validation across **three real codebases of 
 | Moat held? | ✓ (5+3 in Pass-2, 5+3 in depth) | ✓ (9 cross-persona patterns in depth control) | ✓ (6+2 in Phase B) |
 | Net-new finding plain CC missed? | 1 (role-picker-modal pointer-event trap) | n/a (control run) | 1 (console-404 / trust erosion) |
 
-Two of three apps had a confirmed *"only-PersonaLab-could-find-this"* finding. Cross-persona pattern counts ranged 5-9. Phase B mechanisms exercised on 3 of 5 axes (modality, route-order, error-sim) with the other 2 (back-button, trust filter) wired-and-unit-tested but app-shape-dependent. This is a defensible validation surface for a publish.
+Two of three apps had a confirmed *"only-CohortQA-could-find-this"* finding. Cross-persona pattern counts ranged 5-9. Phase B mechanisms exercised on 3 of 5 axes (modality, route-order, error-sim) with the other 2 (back-button, trust filter) wired-and-unit-tested but app-shape-dependent. This is a defensible validation surface for a publish.
 
 ### What we'd have learned from Dispatch (and didn't)
 
@@ -116,10 +118,10 @@ Both questions deserve a placeholder in the publish doc: "future work — valida
 
 ## Branch state
 
-`personalab/dispatch-test` was created off `personalab/phase-b` for this audit. No code changes, no qa config, no run artifacts. Only this audit doc lands on the branch — the work product of Phase 0.
+`cohortqa/dispatch-test` was created off `cohortqa/phase-b` for this audit. No code changes, no qa config, no run artifacts. Only this audit doc lands on the branch — the work product of Phase 0.
 
 **Recommended next action:** merge intent of this audit back into the trajectory by either:
-- Closing this branch (no real work to land) and moving to publish-prep on `personalab/phase-b`'s state
+- Closing this branch (no real work to land) and moving to publish-prep on `cohortqa/phase-b`'s state
 - Keeping this branch as the documentation of the stop decision, and tagging the audit so future-you can find it when "should we test on Dispatch?" comes up again
 
 ---

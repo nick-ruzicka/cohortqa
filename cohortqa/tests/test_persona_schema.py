@@ -1,4 +1,4 @@
-"""Tests for PersonaLab schema validators.
+"""Tests for CohortQA schema validators.
 
 Each fixture in ``fixtures/`` is one configuration. ``valid_*`` should pass;
 ``invalid_*`` should produce errors. We assert on substrings of the error
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from personalab.core.persona_schema import (
+from cohortqa.core.persona_schema import (
     SchemaError,
     load_app_config,
     load_persona,

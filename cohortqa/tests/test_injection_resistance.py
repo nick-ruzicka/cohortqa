@@ -1,6 +1,6 @@
 """Prompt-injection resistance tests.
 
-PersonaLab's analyzer reads live page content (titles, console errors,
+CohortQA's analyzer reads live page content (titles, console errors,
 exception strings) — any of which a page author can control. The
 system has three layers of containment:
 
@@ -26,12 +26,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from personalab.core.analyzer import (
+from cohortqa.core.analyzer import (
     FrictionAnalyzer,
     _build_friction_taxonomy,
     _build_user_message,
 )
-from personalab.core.synthesizer import (
+from cohortqa.core.synthesizer import (
     _build_synth_system_prompt,
     _build_synth_user_message,
 )
@@ -226,7 +226,7 @@ def test_analyzer_messages_kwargs_has_no_tools_field(tmp_path):
 
 def test_synthesizer_messages_kwargs_has_no_tools_field(tmp_path):
     """Same tool-poverty check for the synthesizer."""
-    from personalab.core.synthesizer import Synthesizer
+    from cohortqa.core.synthesizer import Synthesizer
 
     reports_dir = tmp_path / "reports"
     reports_dir.mkdir()

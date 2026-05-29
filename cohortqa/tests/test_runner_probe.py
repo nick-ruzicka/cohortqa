@@ -10,8 +10,8 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from personalab.core.persona_schema import KNOWN_FRICTION_TYPES, load_app_config
-from personalab.core.runner import (
+from cohortqa.core.persona_schema import KNOWN_FRICTION_TYPES, load_app_config
+from cohortqa.core.runner import (
     _probe_route_actions,
     _visible_names_from_probe,
 )
@@ -91,11 +91,17 @@ def test_instrumentation_gap_is_a_known_friction_type():
 
 
 def test_qa_app_yaml_declares_instrumentation_gap():
-    """The live app.yaml must declare the type so the analyzer's
-    prompt-time taxonomy iteration includes it. Cross-checks that the
-    schema constant and the live config stay in sync."""
+    """If the user supplies a live `qa/app.yaml` at the repo root, it must
+    declare the `instrumentation_gap` type so the analyzer's prompt-time
+    taxonomy iteration includes it. Cross-checks that the schema constant
+    and the live config stay in sync. Skipped when no live config is
+    present (i.e., on the framework repo itself before any user adopts it)."""
     repo_root = Path(__file__).resolve().parents[2]
-    cfg = load_app_config(repo_root / "qa" / "app.yaml")
+    qa_app = repo_root / "qa" / "app.yaml"
+    if not qa_app.exists():
+        import pytest
+        pytest.skip("no live qa/app.yaml — framework repo, not user repo")
+    cfg = load_app_config(qa_app)
     types = {s["type"] for s in cfg["friction_signals"]}
     assert "instrumentation_gap" in types
 
@@ -126,7 +132,7 @@ class _FakeHydrationPage:
 
 def test_wait_for_hydration_returns_true_when_body_stabilises_large():
     """Two reads in a row at the same length >= 200 chars → settled."""
-    from personalab.core.runner import _wait_for_hydration
+    from cohortqa.core.runner import _wait_for_hydration
 
     page = _FakeHydrationPage([0, 50, 2500, 2500])
     settled = asyncio.run(_wait_for_hydration(page))
@@ -139,7 +145,7 @@ def test_wait_for_hydration_returns_true_for_small_but_stable_body():
     """A genuinely short page (e.g. dense /context after improvement)
     shouldn't burn the full 3s waiting for it to grow — once it's stable
     at a small non-zero size, we're done."""
-    from personalab.core.runner import _wait_for_hydration
+    from cohortqa.core.runner import _wait_for_hydration
 
     page = _FakeHydrationPage([0, 40, 40])
     settled = asyncio.run(_wait_for_hydration(page))
@@ -152,7 +158,7 @@ def test_wait_for_hydration_returns_false_at_cap_with_zero_body(monkeypatch):
     instrumentation_gap signal.
 
     Fake-clock the wall time so the test doesn't burn the real 3s cap."""
-    from personalab.core import runner
+    from cohortqa.core import runner
 
     # Each call advances 100ms of fake wall time; ensures the loop hits
     # the 3000ms cap quickly without taking real time.
@@ -171,7 +177,7 @@ def test_wait_for_hydration_returns_false_at_cap_with_zero_body(monkeypatch):
 def test_wait_for_hydration_survives_evaluate_exceptions():
     """If the page navigates away during the wait and evaluate() raises,
     we should return False rather than crash the runner."""
-    from personalab.core.runner import _wait_for_hydration
+    from cohortqa.core.runner import _wait_for_hydration
 
     class _CrashPage:
         async def evaluate(self, _expr: str):
@@ -189,7 +195,7 @@ def test_wait_for_hydration_survives_evaluate_exceptions():
 def test_classify_action_error_separates_known_modes():
     """Each Playwright failure flavour gets a distinct error_type so the
     analyzer can tier severity by failure mode."""
-    from personalab.core.runner import _classify_action_error
+    from cohortqa.core.runner import _classify_action_error
 
     class _TimeoutError(Exception):
         pass
@@ -207,7 +213,7 @@ def test_classify_action_error_prefers_timeout_when_message_mentions_both():
     """A TimeoutError whose message also contains 'not found' should still
     classify as timeout — the failure mode is timing, the missing element
     is downstream."""
-    from personalab.core.runner import _classify_action_error
+    from cohortqa.core.runner import _classify_action_error
 
     class _TimeoutError(Exception):
         pass

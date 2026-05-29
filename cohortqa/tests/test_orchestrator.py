@@ -15,9 +15,9 @@ from typing import Any
 
 import pytest
 
-from personalab.core.analyzer import FrictionEvent, FrictionReport
-from personalab.core.orchestrator import Orchestrator, OrchestratorResult
-from personalab.core.synthesizer import PolishSpec
+from cohortqa.core.analyzer import FrictionEvent, FrictionReport
+from cohortqa.core.orchestrator import Orchestrator, OrchestratorResult
+from cohortqa.core.synthesizer import PolishSpec
 
 
 # ─── Fixture builders ─────────────────────────────────────────────────────────
@@ -343,7 +343,7 @@ def test_result_to_dict_is_json_serialisable(tmp_path):
 
 def test_cli_argparser_accepts_minimal_args():
     """The CLI shouldn't reject the documented invocation."""
-    from personalab.core.orchestrator import _build_argparser
+    from cohortqa.core.orchestrator import _build_argparser
     parser = _build_argparser()
     args = parser.parse_args(["--app", "qa/app.yaml"])
     assert args.app == "qa/app.yaml"
@@ -353,7 +353,7 @@ def test_cli_argparser_accepts_minimal_args():
 
 
 def test_cli_argparser_accepts_full_flag_set():
-    from personalab.core.orchestrator import _build_argparser
+    from cohortqa.core.orchestrator import _build_argparser
     parser = _build_argparser()
     args = parser.parse_args([
         "--app", "qa/app.yaml",

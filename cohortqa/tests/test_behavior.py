@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from personalab.core.behavior import (
+from cohortqa.core.behavior import (
     CLICK_DELAY_MS,
     PROTECTED_SIDE_EFFECT_PREFIXES,
     actions_for_route,
@@ -162,7 +162,7 @@ def test_archetype_engagement_selective():
 def test_click_delay_ms_keys_match_validator_vocabulary():
     """If we add a click_speed to KNOWN_CLICK_SPEEDS, this test reminds us
     to add a delay for it too."""
-    from personalab.core.persona_schema import KNOWN_CLICK_SPEEDS
+    from cohortqa.core.persona_schema import KNOWN_CLICK_SPEEDS
     assert set(CLICK_DELAY_MS.keys()) == KNOWN_CLICK_SPEEDS
 
 
@@ -182,7 +182,7 @@ def test_is_protected_action_true_for_writes_applications_md():
 def test_is_protected_action_true_for_any_writes_prefix():
     """Substring matching: any ``writes:`` side-effect protects, regardless
     of file. Future apps may declare other protected files without
-    PersonaLab needing an explicit whitelist."""
+    CohortQA needing an explicit whitelist."""
     action = {"side_effects": ["writes:data/score-overrides.json"]}
     assert is_protected_action(action) is True
 

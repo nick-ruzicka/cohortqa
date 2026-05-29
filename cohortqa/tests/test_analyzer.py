@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from personalab.core.analyzer import (
+from cohortqa.core.analyzer import (
     AnalyzerConfig,
     FrictionAnalyzer,
     FrictionEvent,
@@ -78,14 +78,14 @@ def _session_jsonl(tmp_path: Path) -> Path:
         {
             "ts": "2026-05-17T08:00:00.000Z",
             "persona_id": "tp",
-            "source": "personalab:tp",
+            "source": "cohortqa:tp",
             "event_type": "reasoning",
             "reasoning": "Persona opening.",
         },
         {
             "ts": "2026-05-17T08:00:01.000Z",
             "persona_id": "tp",
-            "source": "personalab:tp",
+            "source": "cohortqa:tp",
             "event_type": "nav",
             "route": "/x",
             "render_time_ms": 1800,
@@ -168,7 +168,7 @@ def test_persona_context_includes_identity_and_behavioral():
 
 def test_user_message_trims_payload_to_keep_only_useful_fields(tmp_path):
     path = _session_jsonl(tmp_path)
-    from personalab.core.runner import read_session
+    from cohortqa.core.runner import read_session
     events = read_session(path)
     msg = _build_user_message(events)
     assert "FrictionReport" in msg
@@ -324,7 +324,7 @@ def test_analyzer_uses_adaptive_thinking_and_no_sampling_params(tmp_path):
 
 
 def test_analyzer_uses_default_model_when_no_env_override(tmp_path, monkeypatch):
-    monkeypatch.delenv("PERSONALAB_ANTHROPIC_MODEL", raising=False)
+    monkeypatch.delenv("COHORTQA_ANTHROPIC_MODEL", raising=False)
     # Re-import to pick up the env clear — module-level DEFAULT_MODEL is
     # captured at import time, so this asserts the configured default
     # at the AnalyzerConfig level instead.

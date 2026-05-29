@@ -1,4 +1,4 @@
-"""PersonaLab orchestrator — one CLI invocation runs the whole loop.
+"""CohortQA orchestrator — one CLI invocation runs the whole loop.
 
 Pipeline:
 
@@ -15,8 +15,8 @@ Pipeline:
 
 CLI:
 
-  python -m personalab.core.orchestrator --app qa/app.yaml
-  python -m personalab.core.orchestrator --app qa/app.yaml \
+  python -m cohortqa.core.orchestrator --app qa/app.yaml
+  python -m cohortqa.core.orchestrator --app qa/app.yaml \
       --parallel 3 --skip-analysis --skip-synthesis
 
 The CLI exposes flags for the common knobs (parallelism, dev_server
@@ -91,7 +91,7 @@ class OrchestratorResult:
 
 
 class Orchestrator:
-    """Run PersonaLab end-to-end against one app + its personas."""
+    """Run CohortQA end-to-end against one app + its personas."""
 
     def __init__(
         self,
@@ -266,8 +266,8 @@ class Orchestrator:
 
 def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="python -m personalab.core.orchestrator",
-        description="Run PersonaLab end-to-end against an app config.",
+        prog="python -m cohortqa.core.orchestrator",
+        description="Run CohortQA end-to-end against an app config.",
     )
     p.add_argument(
         "--app", required=True,
@@ -309,7 +309,7 @@ def _build_argparser() -> argparse.ArgumentParser:
 
 
 def _print_summary(result: OrchestratorResult) -> None:
-    print("\nPersonaLab orchestrator — done")
+    print("\nCohortQA orchestrator — done")
     print("─" * 40)
     print(f"Elapsed: {result.elapsed_seconds:.1f}s")
     print(f"Sessions: {len(result.sessions)}")

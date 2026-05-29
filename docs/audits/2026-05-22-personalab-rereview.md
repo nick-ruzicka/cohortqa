@@ -1,4 +1,6 @@
-# PersonaLab Architectural Re-Review — Kill Funnel
+# CohortQA Architectural Re-Review — Kill Funnel
+
+_Formerly known as **PersonaLab** — renamed to **CohortQA** at OSS publish (2026-05-28)._
 
 **Date:** 2026-05-22 · **Mode:** read-only, conceptual · **Branch:** `docs/audit-gtm-fde-onboarding-extension` · **Posture:** adversarial. Try hardest to kill at each level. No flattery.
 
@@ -12,10 +14,10 @@
 
 ### The strongest case AGAINST
 
-1. **A 30-minute human walkthrough catches the same affordance bugs.** Real PMs / designers / engineers reading the UI find "this button is missing," "this label is confusing," "this is slow" in minutes. The bugs PersonaLab catches are bugs a competent half-day of QA catches. Adding an LLM-and-Playwright pipeline to do what an attentive human does in coffee-break time is *process burden disguised as scale*.
-2. **Playwright tests in CI already catch the deterministic regressions.** A real E2E suite catches 404s, broken click paths, missing buttons, and timeouts before they merge. The PersonaLab runner is itself Playwright + heuristics — so the marginal "ML" content is just the analyzer's labeling, not the discovery.
+1. **A 30-minute human walkthrough catches the same affordance bugs.** Real PMs / designers / engineers reading the UI find "this button is missing," "this label is confusing," "this is slow" in minutes. The bugs CohortQA catches are bugs a competent half-day of QA catches. Adding an LLM-and-Playwright pipeline to do what an attentive human does in coffee-break time is *process burden disguised as scale*.
+2. **Playwright tests in CI already catch the deterministic regressions.** A real E2E suite catches 404s, broken click paths, missing buttons, and timeouts before they merge. The CohortQA runner is itself Playwright + heuristics — so the marginal "ML" content is just the analyzer's labeling, not the discovery.
 3. **The personas are Claude's model of what a persona thinks.** Even though the runner is deterministic (`behavior.py` — pure rules, no LLM, `actions_for_route` at `runner.py:345`), the friction labeling in `analyzer.py:450` is Claude reading observations *through a persona-lens system prompt*. That step is Claude predicting persona reactions. If the LLM has a wrong prior on what a "Senior GTM Engineer" cares about, the labels are wrong; you cannot tell if a real Senior GTM Engineer would actually feel that friction.
-4. **The scope is shallow.** The taxonomy is explicit (`qa/app.yaml:47-85`, `persona_schema.py:39-49`): navigation, scoring_opacity, archetype_confusion, data_density, missing_action, broken_link, slow_load, empty_state, instrumentation_gap. **Nine signals, all affordance/UX-flavored.** It does not catch server errors, data integrity, cross-component consistency. The user's memory-flag stands: Gstack caught those bugs; PersonaLab didn't. The bugs that *ship and break things in prod* are typically the bugs PersonaLab doesn't catch. The bugs PersonaLab catches are the bugs that hurt retention / activation — important, but not the highest-severity class.
+4. **The scope is shallow.** The taxonomy is explicit (`qa/app.yaml:47-85`, `persona_schema.py:39-49`): navigation, scoring_opacity, archetype_confusion, data_density, missing_action, broken_link, slow_load, empty_state, instrumentation_gap. **Nine signals, all affordance/UX-flavored.** It does not catch server errors, data integrity, cross-component consistency. The user's memory-flag stands: Gstack caught those bugs; CohortQA didn't. The bugs that *ship and break things in prod* are typically the bugs CohortQA doesn't catch. The bugs CohortQA catches are the bugs that hurt retention / activation — important, but not the highest-severity class.
 5. **Process burden vs signal yield.** Setup is 4–8 hours per app (write `app.yaml` with N routes + expected_load_time_ms + friction_signals, write 6 personas, write scenarios). $1/run. For most teams shipping at normal cadence, that setup cost dwarfs the savings vs a 30-min manual QA pass.
 
 ### The strongest case FOR (what survives the attack)
@@ -23,11 +25,11 @@
 1. **The data is real; only the labeling is LLM.** Playwright captures honest observations: console errors, page text, selector matches, load times, navigation errors. Claude doesn't *drive* personas (behavior.py is deterministic, zero LLM); Claude only reads logs and labels friction. This is **not "AI simulates a user end-to-end"**; this is "AI helps you read your real telemetry through a user's eyes." Much weaker self-reference than I feared going in.
 2. **Cross-persona pattern detection over telemetry is non-trivial.** A single Claude call across 6 friction reports surfaces "5/6 personas hit the same dead-end at `/signals`" in seconds. Doing that by hand across 6 long markdown reports takes 30+ minutes per release. **This is the irreducible value: cross-persona pattern synthesis over deterministic telemetry.**
 3. **Personas encode users you don't have access to.** A skeptical CFO, a new-to-platform engineer, a power-user — you can't always recruit these. Encoding them as YAML lets you re-run the same exam every release. Even if Claude's persona-model is imperfect, an imperfect repeatable proxy beats no proxy.
-4. **The 43%→0% FP-rate history shows honest engineering, not theatre.** The fix (selector_probe abstraction `runner.py:304-308` + hydration wait `runner.py:275` + new `instrumentation_gap` friction type `persona_schema.py:48`) is structural, not a band-aid. Most "AI QA" products would have sold the hallucinated friction and called it a feature. PersonaLab engaged with the failure mode honestly.
+4. **The 43%→0% FP-rate history shows honest engineering, not theatre.** The fix (selector_probe abstraction `runner.py:304-308` + hydration wait `runner.py:275` + new `instrumentation_gap` friction type `persona_schema.py:48`) is structural, not a band-aid. Most "AI QA" products would have sold the hallucinated friction and called it a feature. CohortQA engaged with the failure mode honestly.
 
 ### L1 verdict
 
-**Narrow survival.** The case against is real — a thoughtful human-plus-Playwright covers ~80% of what PersonaLab catches. The case for has an irreducible kernel:
+**Narrow survival.** The case against is real — a thoughtful human-plus-Playwright covers ~80% of what CohortQA catches. The case for has an irreducible kernel:
 
 > **Cross-persona pattern synthesis over real Playwright telemetry, with personas providing a perspective filter that surfaces issues a generic E2E test doesn't flag as failing but a specific user would experience as friction.**
 
@@ -45,9 +47,9 @@ UX/affordance friction is real and ships often. SaaS adoption literature treats 
 
 ### Who's the user?
 
-- **Primary:** A solo or 2-3-person team builder shipping an AI app, no designer, no UX researcher, no QA function. PersonaLab gives them a "what would my users feel?" digest before each release.
+- **Primary:** A solo or 2-3-person team builder shipping an AI app, no designer, no UX researcher, no QA function. CohortQA gives them a "what would my users feel?" digest before each release.
 - **Secondary:** A larger team that wants a regression check on user experience between releases — a "did we get worse?" signal.
-- **Anti-user:** Anyone shipping infrastructure / data products. PersonaLab's UX-friction taxonomy is the wrong tool for backend correctness.
+- **Anti-user:** Anyone shipping infrastructure / data products. CohortQA's UX-friction taxonomy is the wrong tool for backend correctness.
 
 ### Effort-in vs signal-out
 
@@ -98,7 +100,7 @@ If the user wants me to kill it at L2 because "niche" is fatal — I won't. Plen
 
 **70% structural, 30% tuned.**
 - Structural (robust): selector_probe (`runner.py:304-308`), hydration wait (`runner.py:275`), `instrumentation_gap` taxonomy slot (`persona_schema.py:48`). These will hold up on any new app — they fixed real telemetry-shape problems, not CareerOps-specific patterns.
-- Tuned (fragile): the synthesizer re-prompt regex (English word match) and the confidence demoter (defensive guardrail). These will likely *also* hold up on a different app — but for a different reason than they fired on CareerOps. They are patches around model-output-shape failures, not telemetry-shape failures. If the model version changes (Sonnet 4.6 → Opus 4.7 → next), they may stop triggering correctly. **A new app porting PersonaLab today probably won't FP. A new app porting PersonaLab in 18 months with a newer model might.**
+- Tuned (fragile): the synthesizer re-prompt regex (English word match) and the confidence demoter (defensive guardrail). These will likely *also* hold up on a different app — but for a different reason than they fired on CareerOps. They are patches around model-output-shape failures, not telemetry-shape failures. If the model version changes (Sonnet 4.6 → Opus 4.7 → next), they may stop triggering correctly. **A new app porting CohortQA today probably won't FP. A new app porting CohortQA in 18 months with a newer model might.**
 
 ### Rebuild-it-today list
 
@@ -109,7 +111,7 @@ If I rebuilt the architecture today knowing what I know now:
 3. **Promote `nav_error` to a first-class friction type.** The runner already captures it (`runner.py:264-265`), but it has no taxonomy slot — analyzer fudges it into missing_action or empty_state. The user's memory-flag about server errors not being caught is *partially fixable* with this change.
 4. **Add a `data_inconsistency` friction type for cross-component consistency.** Catch "company card shows X but detail page shows Y." Requires the runner to record entity-attribute observations across routes (small extension to JSONL schema) and the analyzer to do an inter-route comparison pass. This addresses the *real* memory-flag scope limitation (cross-component consistency).
 5. **Default friction taxonomy ships with the framework**, not redeclared per app. Today every app.yaml repeats the 9 types. The framework should provide them as a default; apps add domain-specific extras.
-6. **scenario_runner + replayer move to `personalab.extras/` or a separate package.** Useful but optional; cleaner core if they're out of the main module.
+6. **scenario_runner + replayer move to `cohortqa.extras/` or a separate package.** Useful but optional; cleaner core if they're out of the main module.
 7. **Behavior rules become persona-attributes-as-inputs to a tiny DSL**, not hardcoded click_speed/detail_dwell_ms switches. Easier to extend without code changes.
 
 ### L3 verdict
@@ -136,9 +138,9 @@ Forge: Flask/Celery, AI tool marketplace, 5-step submission flow.
 2. **Reviewer (judging submissions):** product/eng leadership doing batch review. Cares about: all submission info in one view, batch operations, clear queue state, ability to leave comments visible to submitter.
 3. **(Optional) End-user/browser:** looking for an AI tool to install/use. Cares about: discovery (search, filter, categories), trustworthy ratings, install/usage friction. (Lower priority for Pass-2 — the submission flow is more interesting.)
 
-### Predicted friction PersonaLab would surface
+### Predicted friction CohortQA would surface
 
-High-probability hits (PersonaLab's sweet spot):
+High-probability hits (CohortQA's sweet spot):
 - **Multi-step state preservation:** Flask form state lost on back-button or session-expire. Tool-submitter persona hits this on step 3, navigates away, comes back, empty form → `empty_state` or `missing_action`.
 - **In-place validation feedback:** if step 2 fails validation, does the user see why on step 2 or get bounced to step 1? Common Flask anti-pattern → `navigation` friction.
 - **Celery task feedback opacity:** post-submission async work without UI feedback ("Submitted, you'll get an email") → `scoring_opacity` / `empty_state` (no recovery path during the async wait).
@@ -146,7 +148,7 @@ High-probability hits (PersonaLab's sweet spot):
 - **Step indicator clarity:** "Step 3 of 5" missing or inconsistent across steps → `navigation`.
 
 Low-probability misses (the scope limitations):
-- Celery task that silently fails server-side → PersonaLab captures `nav_error` only if the page returns 5xx; if it returns 200 with "we're processing" stuck forever, PersonaLab eventually flags `slow_load` but doesn't know it failed.
+- Celery task that silently fails server-side → CohortQA captures `nav_error` only if the page returns 5xx; if it returns 200 with "we're processing" stuck forever, CohortQA eventually flags `slow_load` but doesn't know it failed.
 - Data integrity in the submitted record → out of scope.
 - Cross-component consistency (submitted-tool fields displayed differently on submitter dashboard vs reviewer queue) → out of scope today, addressable with the rebuild-it-today item #4.
 
@@ -159,7 +161,7 @@ Low-probability misses (the scope limitations):
 
 **Total: 6–9 hours** for a minimal-but-useful Forge config + first real run.
 
-**Worth doing?** Yes. Forge is exactly the audience PersonaLab was built for — multi-persona, multi-step flows, AI-app, no obvious in-house UX function. If Pass-2 surfaces meaningful friction with this setup cost, the project's hypothesis is validated. If Pass-2 produces a polish spec full of `instrumentation_gap` or noise, the hypothesis is falsified and the recommendation flips to **fold back into career-ops as a fixture, don't publish**.
+**Worth doing?** Yes. Forge is exactly the audience CohortQA was built for — multi-persona, multi-step flows, AI-app, no obvious in-house UX function. If Pass-2 surfaces meaningful friction with this setup cost, the project's hypothesis is validated. If Pass-2 produces a polish spec full of `instrumentation_gap` or noise, the hypothesis is falsified and the recommendation flips to **fold back into career-ops as a fixture, don't publish**.
 
 ---
 
@@ -171,14 +173,14 @@ Sequencing:
 
 1. **Run Pass-2 against Forge FIRST.** 6–9 hours of setup. Decision: does the polish spec surface friction a thoughtful manual QA wouldn't have found, with low FP and minimal `instrumentation_gap` noise?
    - **Yes:** proceed to (2).
-   - **No:** stop. PersonaLab is a useful career-ops fixture; **don't publish.** Fold it back; it lives as `qa/` next to a Next.js app and earns its keep there.
+   - **No:** stop. CohortQA is a useful career-ops fixture; **don't publish.** Fold it back; it lives as `qa/` next to a Next.js app and earns its keep there.
 2. **If Pass-2 succeeds: 1–2 days of moderate rework before publish.** Synthesizer strict-output + prompt-internalized confidence rules + taxonomy expansion for `nav_error` + `data_inconsistency` + default taxonomy in framework. Address the L3 rebuild-it-today list items 1–4.
-3. **Publish standalone as "PersonaLab — niche OSS UX-friction QA framework for solo/small-team AI-app builders."** Right-size the framing aggressively. Do NOT position as "AI QA platform" or "the future of testing." Position as "a useful tool for a specific audience" — closer in framing to `locust` or `radon` than to `Selenium`.
+3. **Publish standalone as "CohortQA — niche OSS UX-friction QA framework for solo/small-team AI-app builders."** Right-size the framing aggressively. Do NOT position as "AI QA platform" or "the future of testing." Position as "a useful tool for a specific audience" — closer in framing to `locust` or `radon` than to `Selenium`.
 4. **Accept the realistic ceiling:** a few hundred-to-low-thousand OSS users. If a small paid SaaS materializes from that audience self-organizing, fine. Don't build for a market that isn't there.
 
 ### The fallback that needs to be said clearly
 
-If after Pass-2 the data says "even on a non-CareerOps app this is mostly noise + setup tax," the right move is **don't publish**. Fold it back. The author would rather hear that now than after publishing — and the kill-funnel here gives a real gate (Pass-2 friction yield vs setup cost) that decides which side of the line PersonaLab lands on.
+If after Pass-2 the data says "even on a non-CareerOps app this is mostly noise + setup tax," the right move is **don't publish**. Fold it back. The author would rather hear that now than after publishing — and the kill-funnel here gives a real gate (Pass-2 friction yield vs setup cost) that decides which side of the line CohortQA lands on.
 
 The bones are good, the irreducible value is real, the scope is honest-if-niche. But it has not yet proven it works for an app the author didn't build. **Pass-2 is the only honest test.** Everything downstream waits on its result.
 
@@ -186,6 +188,6 @@ The bones are good, the irreducible value is real, the scope is honest-if-niche.
 
 ## Files inspected (read-only)
 
-`personalab/README.md`, `personalab/core/{runner,analyzer,scenario_runner,synthesizer,orchestrator,behavior,persona_schema,replayer,_credit_check}.py` (briefly via subagent for facts gathering), `personalab/schemas/{app-config,persona,scenario}.schema.yaml`, `qa/app.yaml`, `qa/tests/test_no_app_imports_in_core.py`, git history for the 43%→0% FP fix (commits `8aea455`, `ea1c031`, `52c0b8f`).
+`cohortqa/README.md`, `cohortqa/core/{runner,analyzer,scenario_runner,synthesizer,orchestrator,behavior,persona_schema,replayer,_credit_check}.py` (briefly via subagent for facts gathering), `cohortqa/schemas/{app-config,persona,scenario}.schema.yaml`, `qa/app.yaml`, `qa/tests/test_no_app_imports_in_core.py`, git history for the 43%→0% FP fix (commits `8aea455`, `ea1c031`, `52c0b8f`).
 
 No code changed. No extraction performed. No Forge wiring attempted. Conceptual rereview only.

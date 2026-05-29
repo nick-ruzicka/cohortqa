@@ -188,11 +188,11 @@ def trust_filters_action(persona: dict[str, Any], action: dict[str, Any]) -> boo
 
 # ─── Protected side-effects ───────────────────────────────────────────────────
 #
-# PersonaLab must not mutate user-owned files. An action whose
+# CohortQA must not mutate user-owned files. An action whose
 # ``side_effects`` list contains any of these strings is logged as
 # *intent* (so the analyzer sees the persona considered it) but the click
 # is never actually dispatched. The source-tag on events also lets
-# real analytics filter PersonaLab traffic out — this constant is the
+# real analytics filter CohortQA traffic out — this constant is the
 # defence for things that don't read the source tag (e.g. raw file
 # writers).
 #

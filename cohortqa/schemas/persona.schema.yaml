@@ -1,6 +1,6 @@
-# PersonaLab persona schema
+# CohortQA persona schema
 #
-# One persona.yaml = one simulated user. PersonaLab loads these, drives
+# One persona.yaml = one simulated user. CohortQA loads these, drives
 # the browser according to `behavioral`, and asks the analyzer to weight
 # friction by `friction_sensitivities`.
 

@@ -1,4 +1,4 @@
-"""Validators for PersonaLab's three config types.
+"""Validators for CohortQA's three config types.
 
 Each ``validate_*`` function takes a parsed dict (already YAML-loaded) and
 returns ``(ok: bool, errors: list[str])``. Errors are dotted paths plus a
@@ -11,7 +11,7 @@ errors joined.
 
 Hand-rolled rather than using ``jsonschema`` because (a) the schemas are
 small and stable, (b) keeping the dep surface tiny makes the firewall easy
-(``personalab/core/*`` is import-clean), and (c) the error messages we
+(``cohortqa/core/*`` is import-clean), and (c) the error messages we
 want are domain-specific ("unknown friction signal type 'wibble'") rather
 than schema-generic.
 """
@@ -27,13 +27,13 @@ import yaml
 # ─── Vocabularies ─────────────────────────────────────────────────────────────
 
 # Friction signal types the app-config may declare. Mirrors the comment in
-# personalab/schemas/app-config.schema.yaml. Apps may use any subset; personas
+# cohortqa/schemas/app-config.schema.yaml. Apps may use any subset; personas
 # may only declare sensitivities to types the app also declares (validated
 # cross-config in ``validate_persona_against_app``).
 #
-# `instrumentation_gap` is the schema escape hatch added in feat/personalab-
+# `instrumentation_gap` is the schema escape hatch added in feat/cohortqa-
 # improvements for the C6 cascade: when the runner can't tell whether a page
-# lacks an affordance or PersonaLab's selector is stale, the analyzer must
+# lacks an affordance or CohortQA's selector is stale, the analyzer must
 # have somewhere to file the uncertainty. Without this slot, every
 # measurement failure was forced into missing_action/empty_state.
 KNOWN_FRICTION_TYPES = frozenset({
@@ -53,7 +53,7 @@ KNOWN_REJECTION_THRESHOLDS = frozenset({"low", "medium", "medium-high", "high"})
 
 # Phase B: optional extended-behavior vocabularies. A persona may omit any
 # of these fields; the runner uses sensible defaults (mouse / trusting /
-# exploratory / low / False) per personalab/core/behavior.py.
+# exploratory / low / False) per cohortqa/core/behavior.py.
 KNOWN_INPUT_MODALITIES = frozenset({"mouse", "keyboard", "touch"})
 KNOWN_TRUST_POSTURES = frozenset({"trusting", "skeptical", "paranoid"})
 KNOWN_GOAL_CLARITIES = frozenset({"clear", "exploratory", "lost"})

@@ -144,7 +144,7 @@ class SessionReplayer:
             browser = await pw.chromium.launch(headless=self.headless)
             try:
                 context = await browser.new_context(
-                    user_agent="PersonaLab/0.1 (replayer)",
+                    user_agent="CohortQA/0.1 (replayer)",
                     viewport={"width": 1440, "height": 900},
                 )
                 if self.context_hook:

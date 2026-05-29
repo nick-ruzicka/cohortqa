@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from personalab.core.scenario_runner import (
+from cohortqa.core.scenario_runner import (
     RouteDiff,
     RouteSlice,
     compute_diff,
@@ -174,9 +174,14 @@ def test_hook_with_no_modifications_is_a_no_op():
 
 
 def test_hook_construction_does_not_explode_on_starter_scenarios(tmp_path):
-    """Each shipped scenario YAML must produce a hook without raising."""
+    """Each shipped scenario YAML at <repo_root>/qa/scenarios/ must produce
+    a hook without raising. Skipped when no qa/scenarios/ dir exists (i.e.,
+    on the framework repo itself before any user adopts it)."""
     import yaml
     here = Path(__file__).resolve().parents[2] / "qa" / "scenarios"
+    if not here.is_dir():
+        import pytest
+        pytest.skip("no qa/scenarios/ — framework repo, not user repo")
     for f in sorted(here.glob("*.yaml")):
         scenario = yaml.safe_load(f.read_text())
         hook = make_scenario_context_hook(scenario)
@@ -185,11 +190,15 @@ def test_hook_construction_does_not_explode_on_starter_scenarios(tmp_path):
 
 # ─── Validator wiring ─────────────────────────────────────────────────────────
 
-def test_starter_scenarios_pass_personalab_schema():
+def test_starter_scenarios_pass_cohortqa_schema():
     """Every YAML in qa/scenarios/ must satisfy scenario.schema.yaml.
     baseline.yaml uses a config_overrides placeholder so it still passes
-    the 'at least one modification' rule."""
-    from personalab.core.persona_schema import load_scenario
+    the 'at least one modification' rule. Skipped when no qa/scenarios/
+    dir exists (i.e., on the framework repo itself before any user adopts it)."""
+    from cohortqa.core.persona_schema import load_scenario
     here = Path(__file__).resolve().parents[2] / "qa" / "scenarios"
+    if not here.is_dir():
+        import pytest
+        pytest.skip("no qa/scenarios/ — framework repo, not user repo")
     for f in sorted(here.glob("*.yaml")):
         load_scenario(f)

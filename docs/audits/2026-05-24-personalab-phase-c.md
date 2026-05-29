@@ -1,6 +1,8 @@
-# PersonaLab Phase C — dormant mechanisms now fire
+# CohortQA Phase C — dormant mechanisms now fire
 
-**Date:** 2026-05-24 · **Branch:** `personalab/phase-c` (off `personalab/phase-b`) · **Mode:** two surgical runner fixes + 7 new tests + empirical re-validation on chariot · **Spend:** ~$0.40 of self-set $1.00 cap · **Verdict:** both Phase B dormant mechanisms (back-button sim, trust filter) now fire empirically on chariot with the existing 8 universal personas; distinct nav signatures went **6 → 7** of 8; all 159 tests passing (152 prior + 7 new Phase C).
+_Formerly known as **PersonaLab** — renamed to **CohortQA** at OSS publish (2026-05-28)._
+
+**Date:** 2026-05-24 · **Branch:** `cohortqa/phase-c` (off `cohortqa/phase-b`) · **Mode:** two surgical runner fixes + 7 new tests + empirical re-validation on chariot · **Spend:** ~$0.40 of self-set $1.00 cap · **Verdict:** both Phase B dormant mechanisms (back-button sim, trust filter) now fire empirically on chariot with the existing 8 universal personas; distinct nav signatures went **6 → 7** of 8; all 159 tests passing (152 prior + 7 new Phase C).
 
 ---
 
@@ -87,7 +89,7 @@ The other 7 personas correctly produced ZERO trust refusals (they're all `trusti
 
 ## Test coverage
 
-`personalab/tests/test_phase_c.py` — 7 new tests:
+`cohortqa/tests/test_phase_c.py` — 7 new tests:
 
 1. `test_trust_pre_pass_records_refusal_for_chooses_action_excluded_action` — paranoid persona, `run_discovery`-style category=`other` action with `persists:`. Refusal recorded.
 2. `test_trust_pre_pass_silent_for_trusting_persona` — trusting on same route. Zero refusals.
@@ -165,7 +167,7 @@ What remains for the publish:
 
 ## Operational notes
 
-- Branch: `personalab/phase-c` (off `personalab/phase-b`). Not pushed, not merged.
+- Branch: `cohortqa/phase-c` (off `cohortqa/phase-b`). Not pushed, not merged.
 - Chariot static server: still running on :8002 from earlier sessions.
 - Chariot Phase C artifacts: `chariot-qa/_phase-c/{reports,synthesis}/` + JSONLs in `chariot-qa/_runs/*-20260524T*.jsonl`. Not committed (evidence, reproducible).
 - Phase B `chariot-qa/_reports`, `_runs`, `_synthesis` dirs from prior runs still on disk; Phase C wrote to a separate `_phase-c/` dir to keep the comparison clean.

@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from personalab.core.synthesizer import (
+from cohortqa.core.synthesizer import (
     DEFAULT_TARGET_PATTERN_COUNT,
     FrictionPattern,
     PolishSpec,
@@ -375,7 +375,7 @@ def test_render_polish_spec_tags_low_confidence_patterns():
 # ─── Synthesizer post-processing surface (rework: prompt-only) ───────────────
 # The previous build had two post-processing layers (the regex re-prompt
 # fallback and the confidence demoter). Both were removed in the
-# personalab/rework branch — Pass-2 verified neither fired on Forge or
+# cohortqa/rework branch — Pass-2 verified neither fired on Forge or
 # careerops, and the confidence rules are now MANDATORY in the system prompt.
 # The tests below assert the new behavior: the model's output passes through
 # without post-processing.

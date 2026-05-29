@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from personalab.core.replayer import (
+from cohortqa.core.replayer import (
     RENDER_TOLERANCE_FLOOR_MS,
     ReplayStep,
     StepResult,
@@ -232,20 +232,20 @@ def test_replay_smoke_runs_against_route_interception(tmp_path):
     The replay should succeed with no regressions."""
     import asyncio
 
-    from personalab.core.replayer import SessionReplayer
+    from cohortqa.core.replayer import SessionReplayer
 
     # 1. Write a synthetic past session: visited /x, took click_x.
     session_path = tmp_path / "past-session.jsonl"
     session_events = [
-        {"ts": "t", "persona_id": "p", "source": "personalab:p",
+        {"ts": "t", "persona_id": "p", "source": "cohortqa:p",
          "event_type": "reasoning", "reasoning": "opening"},
-        {"ts": "t", "persona_id": "p", "source": "personalab:p",
+        {"ts": "t", "persona_id": "p", "source": "cohortqa:p",
          "event_type": "nav", "route": "/x", "render_time_ms": 200,
          "page_state": {"url": "http://test.local/x", "status": 200,
                         "title": "X", "body_text_length": 100,
                         "visible_action_names": ["click_x"],
                         "console_errors": [], "nav_error": None}},
-        {"ts": "t", "persona_id": "p", "source": "personalab:p",
+        {"ts": "t", "persona_id": "p", "source": "cohortqa:p",
          "event_type": "action", "route": "/x", "action": "click_x",
          "selector": '[data-x]'},
     ]

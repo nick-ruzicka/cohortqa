@@ -55,7 +55,7 @@ def make_scenario_context_hook(scenario: dict[str, Any]):
             # Surfacing in a console.warn so it's visible during runs and
             # in the runner's captured console_errors list.
             await context.add_init_script(
-                "console.warn('[personalab] scenario config_overrides "
+                "console.warn('[cohortqa] scenario config_overrides "
                 "not yet applied at runner level — ignoring')"
             )
 

@@ -3,14 +3,14 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "personalab"
+name = "cohortqa"
 version = "0.1.0"
 description = "Cross-persona UX-friction detector + release-over-release regression harness."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 keywords = ["qa", "ux", "playwright", "claude", "personas", "testing"]
-authors = [{ name = "Nick Ruzicka" }]
+authors = [{ name = "Nick Ruzicka", email = "nick.c.ruzicka@gmail.com" }]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -36,25 +36,17 @@ test = [
 ]
 
 [project.scripts]
-# After `pip install personalab`, `personalab` is the orchestrator entry.
-personalab = "personalab.core.orchestrator:main"
+# After `pip install cohortqa`, `cohortqa` is the orchestrator entry.
+cohortqa = "cohortqa.core.orchestrator:main"
 
 [project.urls]
-Source = "https://github.com/nick-ruzicka/personalab"
-Issues = "https://github.com/nick-ruzicka/personalab/issues"
+Source = "https://github.com/nick-ruzicka/cohortqa"
+Issues = "https://github.com/nick-ruzicka/cohortqa/issues"
 
-[tool.setuptools]
-# Treat `personalab/` itself as the package root. Once this lands in a
-# fresh repo (the "extraction" pass), `personalab/` becomes the package
-# directory and `pyproject.toml` moves to the repo root. For now,
-# both this file and the `core/` submodule live one level inside.
-packages = [
-    "core",
-    "personas",
-    "schemas",
-]
-package-dir = { "" = "." }
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cohortqa*"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["cohortqa/tests"]
 addopts = "-q"

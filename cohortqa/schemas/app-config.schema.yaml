@@ -1,9 +1,9 @@
-# PersonaLab app-config schema
+# CohortQA app-config schema
 #
-# An app.yaml describes how PersonaLab should drive an application:
+# An app.yaml describes how CohortQA should drive an application:
 # which routes exist, what actions are available on each, and which
 # friction signals to look for. This file is the reference; the
-# validator in personalab/core/persona_schema.py enforces it.
+# validator in cohortqa/core/persona_schema.py enforces it.
 #
 # All field types use a tiny vocabulary:
 #   str       — string

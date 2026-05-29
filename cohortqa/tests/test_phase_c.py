@@ -27,7 +27,7 @@ from typing import Any
 
 import pytest
 
-from personalab.core.runner import PersonaRunner
+from cohortqa.core.runner import PersonaRunner
 
 
 # ─── Lightweight async stubs ──────────────────────────────────────────────────

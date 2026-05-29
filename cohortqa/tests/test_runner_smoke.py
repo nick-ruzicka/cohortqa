@@ -140,7 +140,7 @@ def test_runner_smoke_end_to_end(tmp_path):
     has the events we'd expect to see."""
     import asyncio
 
-    from personalab.core.runner import PersonaRunner, read_session
+    from cohortqa.core.runner import PersonaRunner, read_session
 
     async def install_intercept(context):
         async def handler(route, request):
@@ -182,9 +182,9 @@ def test_runner_smoke_end_to_end(tmp_path):
     events = read_session(session_path)
     assert len(events) >= 5  # opening reasoning + 2 navs + actions
 
-    # Every event tagged with personalab source for analytics filtering.
+    # Every event tagged with cohortqa source for analytics filtering.
     for ev in events:
-        assert ev["source"] == "personalab:smoke", ev
+        assert ev["source"] == "cohortqa:smoke", ev
 
     # We hit both routes.
     nav_routes = [ev["route"] for ev in events if ev["event_type"] == "nav"]
@@ -208,7 +208,7 @@ def test_runner_logs_missing_affordances(tmp_path):
     the runner records a reasoning event flagging the gap."""
     import asyncio
 
-    from personalab.core.runner import PersonaRunner, read_session
+    from cohortqa.core.runner import PersonaRunner, read_session
 
     async def empty_intercept(context):
         async def handler(route, request):
@@ -248,7 +248,7 @@ def test_runner_logs_missing_affordances(tmp_path):
 def test_runner_logs_intent_but_does_not_click_protected_actions(tmp_path):
     """``mark_skipped`` declares ``writes:applications.md`` — the runner
     must record persona intent but never dispatch the click. The
-    distinction matters when PersonaLab points at the real dashboard:
+    distinction matters when CohortQA points at the real dashboard:
     a clicked button would mutate user data.
 
     We assert via the JSONL: a reasoning event with ``action == "mark_skipped"``
@@ -257,7 +257,7 @@ def test_runner_logs_intent_but_does_not_click_protected_actions(tmp_path):
     """
     import asyncio
 
-    from personalab.core.runner import PersonaRunner, read_session
+    from cohortqa.core.runner import PersonaRunner, read_session
 
     async def intercept(context):
         async def handler(route, request):
@@ -323,7 +323,7 @@ def test_runner_walks_into_detail_route_after_navigation(tmp_path):
     """
     import asyncio
 
-    from personalab.core.runner import PersonaRunner, read_session
+    from cohortqa.core.runner import PersonaRunner, read_session
 
     # Two pages: a /companies list with a link to /companies/acme, and the
     # detail page itself with a Back button.
@@ -420,7 +420,7 @@ def test_runner_walks_into_detail_route_after_navigation(tmp_path):
 def test_matches_path_pattern_dynamic_segment():
     """Direct test of the pattern matcher — easier to reason about than
     only exercising it through the runner."""
-    from personalab.core.runner import _matches_path_pattern
+    from cohortqa.core.runner import _matches_path_pattern
 
     assert _matches_path_pattern("/companies/anthropic", "/companies/[slug]")
     assert _matches_path_pattern("/users/42/posts", "/users/[id]/posts")

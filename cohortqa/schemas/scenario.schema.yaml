@@ -1,7 +1,7 @@
-# PersonaLab scenario schema
+# CohortQA scenario schema
 #
 # A scenario is a prospective hypothetical: "what would happen if we
-# added X to the UI before persona Y runs through it?" PersonaLab applies
+# added X to the UI before persona Y runs through it?" CohortQA applies
 # modifications, runs the persona, then diffs friction vs baseline.
 
 name: str

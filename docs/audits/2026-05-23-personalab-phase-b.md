@@ -1,6 +1,8 @@
-# PersonaLab Phase B — runner schema extension + third-codebase moat retest
+# CohortQA Phase B — runner schema extension + third-codebase moat retest
 
-**Date:** 2026-05-23 · **Branch:** `personalab/phase-b` (off `personalab/depth`) · **Mode:** schema extension + empirical validation on Forge + retest on chariot (third codebase) · **Spend:** ~$0.40 of $3.50 budget · **Verdict:** schema extension shipped + ALL 152 tests pass; deterministic divergence increased on chariot (5→6 sigs), stayed flat-but-regrouped on Forge (5→5); moat held on chariot with 6 cross-persona patterns + 2 honest single-explorer; one new finding plain Claude Code wouldn't surface (console-404 trust erosion).
+_Formerly known as **PersonaLab** — renamed to **CohortQA** at OSS publish (2026-05-28)._
+
+**Date:** 2026-05-23 · **Branch:** `cohortqa/phase-b` (off `cohortqa/depth`) · **Mode:** schema extension + empirical validation on Forge + retest on chariot (third codebase) · **Spend:** ~$0.40 of $3.50 budget · **Verdict:** schema extension shipped + ALL 152 tests pass; deterministic divergence increased on chariot (5→6 sigs), stayed flat-but-regrouped on Forge (5→5); moat held on chariot with 6 cross-persona patterns + 2 honest single-explorer; one new finding plain Claude Code wouldn't surface (console-404 trust erosion).
 
 > Note on the path here: this branch was re-applied once. Initial implementation was reverted between Edit and validation by a non-user mechanism; the user confirmed the revert was not theirs and instructed re-application. All work below is the re-applied state, post-confirmation.
 
@@ -8,7 +10,7 @@
 
 ## PART 1 — Schema extension (shipped)
 
-Five optional `behavioral.*` fields added with sensible defaults that preserve Phase A behavior for legacy personas. The runner consults them via pure accessor helpers in `personalab/core/behavior.py`.
+Five optional `behavioral.*` fields added with sensible defaults that preserve Phase A behavior for legacy personas. The runner consults them via pure accessor helpers in `cohortqa/core/behavior.py`.
 
 | Field | Vocab | Default | What it does at the runner level |
 |---|---|---|---|
@@ -21,13 +23,13 @@ Five optional `behavioral.*` fields added with sensible defaults that preserve P
 **Backward compat:** existing personas with no Phase B fields get exactly the Phase A behavior. Validated via `test_phase_b_accessors_have_safe_defaults_on_legacy_personas` and `test_routes_for_persona_default_returns_all_in_order`.
 
 **Wired in:**
-- `personalab/core/behavior.py` (+9 helpers: `input_modality`, `trust_posture`, `goal_clarity`, `error_rate`, `has_prior_session`, `routes_for_persona`, `should_double_click_after`, `should_go_back_after`, `trust_filters_action`).
-- `personalab/core/runner.py`:
+- `cohortqa/core/behavior.py` (+9 helpers: `input_modality`, `trust_posture`, `goal_clarity`, `error_rate`, `has_prior_session`, `routes_for_persona`, `should_double_click_after`, `should_go_back_after`, `trust_filters_action`).
+- `cohortqa/core/runner.py`:
   - Route loop now iterates via `routes_for_persona(persona, app["routes"])` instead of `app["routes"]` directly.
   - `_take_action` dispatches click vs focus+Enter vs tap based on `input_modality`. Action reasoning string now includes "via {modality} modality".
   - Per-action post-block runs `should_double_click_after()` then `should_go_back_after()` — successful triggers record action/nav events with "Phase-B error simulation:" / "Phase-B back-button simulation:" reasoning; failures record reasoning events with "Double-click simulation failed:" / "Back-button simulation failed:".
   - Trust filter (`trust_filters_action`) runs BEFORE `is_protected_action` in `_take_route_actions`. Records a `reasoning` event explaining the refusal.
-- `personalab/core/persona_schema.py` validates each new field against its vocab; absence is allowed (back-compat).
+- `cohortqa/core/persona_schema.py` validates each new field against its vocab; absence is allowed (back-compat).
 - 8 universal personas updated. The behavioral matrix is now intentionally divergent:
 
 | Persona | modality | trust | clarity | error | prior_session |
@@ -137,7 +139,7 @@ For comparison, Forge Pass-2 first-run setup took ~25 min. The universal-persona
 
 > 3 of 8 personas (error-prone, wanderer, skimmer) hit dead-ends on detail pages while 5 (keyboard-only, returning-user, rusher, cautious-first-timer, skeptic) sailed through — the failing subset shared a behavior of *probing* the page beyond the back link (clicking quickly, exploring affordances, scanning for visual hierarchy), exposing that ops/analytics/methodology are read-only stubs masquerading as functional surfaces.
 
-That headline structurally requires N personas to compare. A single explorer would either hit the dead-end (and report "ops.html is empty") or not (and report nothing). The N-of-M sub-population analysis is the kind only PersonaLab produces.
+That headline structurally requires N personas to compare. A single explorer would either hit the dead-end (and report "ops.html is empty") or not (and report nothing). The N-of-M sub-population analysis is the kind only CohortQA produces.
 
 **Patterns (8 total): 6 cross-persona + 2 honestly tagged single-explorer-visible**
 
@@ -152,7 +154,7 @@ That headline structurally requires N personas to compare. A single explorer wou
 | 7 | navigation | wanderer | **single-explorer-visible** — only wanderer noticed; honestly tagged |
 | 8 | slow_load | rusher | **single-explorer-visible** — only rusher has a tight personal threshold; honestly tagged |
 
-**Net-new finding plain Claude Code would likely miss:** Pattern #2 (the console 404 spam — `contacts_data.json` missing → ERR_CONNECTION_REFUSED + 404s). The static export tries to fetch live data that isn't there and silently falls back to `SAMPLE_DATA`. The PAGE LOOKS FINE. A single explorer reading the page wouldn't open devtools unprompted. PersonaLab's analyzer reads `console_errors` from every page state automatically — trust-sensitive personas (cautious, rusher, skeptic, wanderer) weighted it as a real friction. **The synth correctly framed it as a 4-of-8 trust-axis finding.**
+**Net-new finding plain Claude Code would likely miss:** Pattern #2 (the console 404 spam — `contacts_data.json` missing → ERR_CONNECTION_REFUSED + 404s). The static export tries to fetch live data that isn't there and silently falls back to `SAMPLE_DATA`. The PAGE LOOKS FINE. A single explorer reading the page wouldn't open devtools unprompted. CohortQA's analyzer reads `console_errors` from every page state automatically — trust-sensitive personas (cautious, rusher, skeptic, wanderer) weighted it as a real friction. **The synth correctly framed it as a 4-of-8 trust-axis finding.**
 
 **Self-honest pattern #3** (error-prone's `back_to_index` timeouts) demonstrates Phase B working as intended at the analyzer layer:
 - error-prone's runner attempted double-clicks → 3 "Double-click simulation failed" reasoning events in the JSONL
@@ -193,26 +195,26 @@ That's the framework's confidence rules in the prompt (from the rework pass) doi
 
 ## Files touched
 
-- `personalab/core/behavior.py` — +5 default constants, +4 known-vocab frozensets, +9 helper functions, `__all__` updated.
-- `personalab/core/runner.py` — imports extended; route iteration via `routes_for_persona`; trust-filter + protected-action ordering; per-action error-sim block; modality-aware click dispatch.
-- `personalab/core/persona_schema.py` — Phase B vocab frozensets; optional-field validation inside the existing `validate_persona` behavioral block.
-- `personalab/personas/*.yaml` (8 files) — extended behavioral block with Phase B fields.
-- `personalab/tests/test_behavior.py` — 18 new tests covering accessors, route ordering, error sim, trust filter.
+- `cohortqa/core/behavior.py` — +5 default constants, +4 known-vocab frozensets, +9 helper functions, `__all__` updated.
+- `cohortqa/core/runner.py` — imports extended; route iteration via `routes_for_persona`; trust-filter + protected-action ordering; per-action error-sim block; modality-aware click dispatch.
+- `cohortqa/core/persona_schema.py` — Phase B vocab frozensets; optional-field validation inside the existing `validate_persona` behavioral block.
+- `cohortqa/personas/*.yaml` (8 files) — extended behavioral block with Phase B fields.
+- `cohortqa/tests/test_behavior.py` — 18 new tests covering accessors, route ordering, error sim, trust filter.
 - `chariot-qa/app.yaml` + `chariot-qa/personas-universal/*.yaml` — third-codebase config (universal personas copied as-is).
 - This audit.
 
-No changes outside `personalab/`, `chariot-qa/`, `docs/`. Scoring engine + dashboard untouched.
+No changes outside `cohortqa/`, `chariot-qa/`, `docs/`. Scoring engine + dashboard untouched.
 
 ---
 
 ## Operational notes
 
-- Branch: `personalab/phase-b` (off `personalab/depth`). No push, no merge.
+- Branch: `cohortqa/phase-b` (off `cohortqa/depth`). No push, no merge.
 - Local servers used: Forge on :8090 (user's pre-existing process, PID 97005), chariot static export on :8002 (started by this audit via `python3 -m http.server 8002` from `hebbia-signal-engine-reference/export/`).
 - Chariot static server still running at session end; cheap to leave or kill (`pkill -f "http.server 8002"`).
 - No live/production servers touched. No data mutated. `chariot-qa/_runs/` and `chariot-qa/_reports/` and `chariot-qa/_synthesis/` are evidence artifacts; not committed but reproducible.
 - Phase B JSONLs from the `--skip-analysis` Forge run are in `forge-qa/_depth/runs/*-20260523T2128*.jsonl`; also evidence, not committed.
-- 152 personalab tests passing post-changes.
+- 152 cohortqa tests passing post-changes.
 
 ---
 

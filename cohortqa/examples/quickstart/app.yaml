@@ -1,7 +1,7 @@
-# PersonaLab quickstart — MyTodos app config.
+# CohortQA quickstart — MyTodos app config.
 #
 # A deliberately-imperfect 4-page TODO app, served as static HTML, so
-# you can run PersonaLab end-to-end in ~5 minutes against a real
+# you can run CohortQA end-to-end in ~5 minutes against a real
 # browser without spinning up a backend.
 #
 # The friction issues are intentional and hand-crafted. After running,
@@ -12,14 +12,14 @@
 #   - "save_todo writes data — paranoid persona refused via trust filter"
 #                                       (skeptic, via Phase C pre-pass)
 # That's the moat in legible form. Edit this file or the personas
-# beside it to point PersonaLab at your own app.
+# beside it to point CohortQA at your own app.
 
 app:
   name: MyTodos
   dev_server: http://localhost:8765
   description: >
     A small 4-page TODO app — landing list, add form, detail view,
-    and done list. Hand-crafted for the PersonaLab quickstart.
+    and done list. Hand-crafted for the CohortQA quickstart.
     Deliberately imperfect so the personas surface real friction.
 
 routes:

@@ -1,14 +1,14 @@
-"""Generic PersonaLab browser runner.
+"""Generic CohortQA browser runner.
 
 Drives one persona through one app's routes in an isolated headless
 Playwright context. Persists a JSONL session log to the app's
 ``runs_dir``. The runner has no app-specific knowledge — it consumes
-``app_config`` (loaded via personalab.core.persona_schema) and the
+``app_config`` (loaded via cohortqa.core.persona_schema) and the
 persona dict, then takes a small handful of behaviorally-justified
 actions per route.
 
 The runner *observes* and *interacts*; it doesn't *interpret*. Friction
-analysis happens later in ``personalab.core.analyzer`` once the session
+analysis happens later in ``cohortqa.core.analyzer`` once the session
 log is complete.
 
 Output schema (one JSON object per line in the JSONL):
@@ -16,7 +16,7 @@ Output schema (one JSON object per line in the JSONL):
   {
     "ts": "2026-05-17T07:02:15.123Z",
     "persona_id": "senior-gtm-eng-nyc",
-    "source": "personalab:senior-gtm-eng-nyc",
+    "source": "cohortqa:senior-gtm-eng-nyc",
     "event_type": "nav" | "capture" | "action" | "reasoning" | "error" | "scenario_applied",
     "route": "/pipeline" | null,
     "action": "run_scan" | null,
@@ -81,12 +81,12 @@ class SessionEvent:
 
     def to_jsonl(self) -> str:
         # Source tag is derived, not stored — it's the same for every event
-        # in a session and we want personalab's events to be filterable in
+        # in a session and we want cohortqa's events to be filterable in
         # downstream analytics with a single string match.
         d = {
             "ts": self.ts,
             "persona_id": self.persona_id,
-            "source": f"personalab:{self.persona_id}",
+            "source": f"cohortqa:{self.persona_id}",
             "event_type": self.event_type,
             "route": self.route,
             "action": self.action,
@@ -229,8 +229,8 @@ class PersonaRunner:
             try:
                 context = await browser.new_context(
                     user_agent=(
-                        f"PersonaLab/0.1 ({self.persona_id}; "
-                        f"+https://example.local/personalab)"
+                        f"CohortQA/0.1 ({self.persona_id}; "
+                        f"+https://example.local/cohortqa)"
                     ),
                     viewport={"width": 1440, "height": 900},
                 )

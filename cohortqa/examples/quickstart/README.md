@@ -1,6 +1,6 @@
-# PersonaLab quickstart — MyTodos
+# CohortQA quickstart — MyTodos
 
-A 5-step, ~5-minute first-run that points PersonaLab at a small
+A 5-step, ~5-minute first-run that points CohortQA at a small
 deliberately-imperfect 4-page TODO app and produces a polish spec
 listing the friction issues 8 different personas surfaced.
 
@@ -11,7 +11,7 @@ patterns the personas converged on. **Cost ~$0.40** with the
 Haiku-analyzer / Opus-synthesizer split.
 
 If anything in these 5 steps takes more than 5 minutes for you (the
-first time, with no PersonaLab background), that's a quickstart bug —
+first time, with no CohortQA background), that's a quickstart bug —
 please open an issue.
 
 ---
@@ -38,7 +38,7 @@ python3 -m playwright install chromium
 ```
 
 The chromium download is ~90 MB. (Once `pyproject.toml` lands you'll
-be able to skip this with `pip install personalab[examples]`.)
+be able to skip this with `pip install cohortqa[examples]`.)
 
 ---
 
@@ -47,7 +47,7 @@ be able to skip this with `pip install personalab[examples]`.)
 In one terminal, from the repo root:
 
 ```bash
-cd personalab/examples/quickstart/site
+cd cohortqa/examples/quickstart/site
 python3 -m http.server 8765
 ```
 
@@ -68,11 +68,11 @@ export ANTHROPIC_API_KEY=sk-ant-...
 # Opus for the cross-persona synthesis (where the moat is). Cuts cost
 # from ~$1.00 to ~$0.40 with no observable label-quality regression
 # (validated in docs/audits/2026-05-23-personalab-depth-design.md §2).
-export PERSONALAB_ANALYZER_MODEL=claude-haiku-4-5-20251001
-export PERSONALAB_SYNTHESIZER_MODEL=claude-opus-4-7
+export COHORTQA_ANALYZER_MODEL=claude-haiku-4-5-20251001
+export COHORTQA_SYNTHESIZER_MODEL=claude-opus-4-7
 ```
 
-If you skip the model split, PersonaLab uses Opus for both stages —
+If you skip the model split, CohortQA uses Opus for both stages —
 still works, just costs 2-3× more.
 
 ---
@@ -82,11 +82,11 @@ still works, just costs 2-3× more.
 Still in the second terminal, from the repo root:
 
 ```bash
-python3 -m personalab.core.orchestrator \
-  --app personalab/examples/quickstart/app.yaml \
+python3 -m cohortqa.core.orchestrator \
+  --app cohortqa/examples/quickstart/app.yaml \
   --parallel 8 \
-  --reports-dir personalab/examples/quickstart/_reports \
-  --synthesis-dir personalab/examples/quickstart/_synthesis
+  --reports-dir cohortqa/examples/quickstart/_reports \
+  --synthesis-dir cohortqa/examples/quickstart/_synthesis
 ```
 
 You'll see 8 personas walk the four routes in parallel headless
@@ -98,7 +98,7 @@ orchestrator prints a summary table on completion.
 ## 5. Read the polish spec  *(~1 min)*
 
 ```bash
-cat personalab/examples/quickstart/_synthesis/polish-spec-draft-*.md
+cat cohortqa/examples/quickstart/_synthesis/polish-spec-draft-*.md
 ```
 
 The document opens with a **cross-persona headline** — the one
@@ -136,15 +136,15 @@ In about 5 minutes you've exercised:
   persona reports for cross-persona patterns. The cross-persona
   headline is the moat — it's the kind of finding a single confused
   user walking the app couldn't structurally produce.
-- The **Phase B/C runtime mechanisms** that distinguish PersonaLab from
+- The **Phase B/C runtime mechanisms** that distinguish CohortQA from
   "headless Chromium + N prompts": modality dispatch, route ordering
   by goal-clarity, error simulation, trust-posture pre-pass. See
   `docs/audits/2026-05-24-personalab-phase-c.md` for empirical proof
   these fire.
 
-The whole framework's source is in `personalab/core/`. Friction
+The whole framework's source is in `cohortqa/core/`. Friction
 taxonomy is declared per-app in `app.yaml`. Personas are YAML files
-you copy from `personalab/personas/`.
+you copy from `cohortqa/personas/`.
 
 ---
 
@@ -152,7 +152,7 @@ you copy from `personalab/personas/`.
 
 The quickstart is designed to be `cp -r`-able onto a new project:
 
-1. Copy this directory: `cp -r personalab/examples/quickstart ~/my-app-qa`.
+1. Copy this directory: `cp -r cohortqa/examples/quickstart ~/my-app-qa`.
 2. Replace `site/` with your app (or point `app.dev_server` in
    `app.yaml` at wherever your app already runs locally).
 3. Rewrite `app.yaml`'s `routes`, `actions`, and `friction_signals`
@@ -161,7 +161,7 @@ The quickstart is designed to be `cp -r`-able onto a new project:
 4. Keep the 8 universal personas as-is — they're posture-defined, not
    domain-specific. Customize `identity.background` if you want the
    analyzer to lens findings through your specific user shape.
-5. Re-run step 4 from above. PersonaLab will produce a polish spec
+5. Re-run step 4 from above. CohortQA will produce a polish spec
    for your app within a few minutes.
 
 A realistic first-time setup for a new app is **15-25 minutes**:
@@ -174,7 +174,7 @@ selectors), not into wrestling with the framework.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `ModuleNotFoundError: No module named 'personalab'` | Running from the wrong directory | Run from the repo root, not from `personalab/examples/quickstart/` |
+| `ModuleNotFoundError: No module named 'cohortqa'` | Running from the wrong directory | Run from the repo root, not from `cohortqa/examples/quickstart/` |
 | `playwright._impl._errors.Error: Executable doesn't exist` | Chromium not installed for Playwright | `python3 -m playwright install chromium` |
 | `anthropic.AuthenticationError` | `ANTHROPIC_API_KEY` not set or invalid | Re-`export` it; verify with `echo $ANTHROPIC_API_KEY` |
 | Orchestrator times out on every route | Static server isn't running | Restart `python3 -m http.server 8765` from `site/` |
@@ -189,8 +189,8 @@ selectors), not into wrestling with the framework.
   database, no auth, no API. The personas walk the rendered surface;
   none of the protected actions (`save_todo`, `mark_done`,
   `delete_todo`) are ever actually clicked (their `writes:` side
-  effects trigger PersonaLab's protected-action suppression).
-- **No scenarios.** PersonaLab supports DOM injections / scenario
+  effects trigger CohortQA's protected-action suppression).
+- **No scenarios.** CohortQA supports DOM injections / scenario
   variants via `scenario_runner.py`; the quickstart skips them to
   keep the surface minimal. The `personas/` dir is the one cap-
   customization point.
@@ -215,18 +215,18 @@ Per the validated cost-architecture in
 
 The naive same-quality run (Opus everywhere) is ~$1.00. The split is
 opt-in via env vars and validated to produce no measurable label
-quality regression on the apps PersonaLab has been tested against.
+quality regression on the apps CohortQA has been tested against.
 
 ---
 
 ## What to read next
 
-- **The audits** under `docs/audits/2026-05-2*-personalab-*.md` — the
+- **The audits** under `docs/audits/2026-05-2*-cohortqa-*.md` — the
   full validation history (Pass-2 / rework / depth / Phase B / Phase
   C) is in there, including honest caveats and what didn't work.
-- **The framework code** under `personalab/core/` — the runner is
+- **The framework code** under `cohortqa/core/` — the runner is
   766 lines of Playwright + behavioral rules; the analyzer + synthesizer
   are ~500 lines each of prompt construction + structured Claude calls.
-- **The 8 universal personas** under `personalab/personas/` — these
+- **The 8 universal personas** under `cohortqa/personas/` — these
   are the load-bearing library. Read the `meta_attitude` blocks to
   understand what each persona surfaces.
