@@ -26,13 +26,24 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install runtime dependencies
-        # The tests don't actually drive a real browser (the smoke test
-        # auto-skips if Playwright isn't usable), so we don't need
-        # `playwright install chromium`. Just the Python packages.
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install pydantic pyyaml anthropic playwright pytest
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/pyproject.toml') }}
+
+      - name: Install Playwright Chromium
+        # Several tests (test_runner_smoke, test_replayer) actually launch
+        # headless Chromium. The "tests auto-skip if browser missing" claim
+        # in older versions of this workflow was wrong.
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: python -m playwright install --with-deps chromium
 
       - name: Run cohortqa tests
         run: python -m pytest cohortqa/tests/ -q
